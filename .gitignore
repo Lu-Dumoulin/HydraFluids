@@ -1,4 +1,6 @@
 CommonUI/
 src/sim/DF.csv
 src/sim/HydraFluids.sh
-src/sim/DS_Store
+src/sim/.DS_Store
+docs/.DS_Store
+.DS_Store

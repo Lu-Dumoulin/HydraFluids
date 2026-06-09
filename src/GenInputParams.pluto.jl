@@ -63,9 +63,13 @@ if pull_commonui
     if !isdir(common_path)
         run(`git clone https://github.com/Lu-Dumoulin/CommonUI.git $(common_path)`)
     else
-        run(`git -C $(common_path) pull`)
-        println("✓ Common UI up to date")
+        rm(common_path, recursive=true)
+        sleep(0.2)
+        run(`git clone https://github.com/Lu-Dumoulin/CommonUI.git $(common_path)`)
     end
+    #     run(`git -C $(common_path) pull`)
+    #     println("✓ Common UI up to date")
+    # end
 
 end
 
