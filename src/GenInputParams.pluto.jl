@@ -20,7 +20,7 @@ end
 begin
 	using DelimitedFiles, CSV, DataFrames, PlutoUI, PlutoTeachingTools
 	try
-		include("common/utils/UI_utils.jl")
+		include("CommonUI/utils/UI_utils.jl")
 		@info "Module UI_utils is loaded"
 	catch
 		try 
@@ -31,7 +31,7 @@ begin
 		end
 	end
 	try
-		include("common/utils/DF_utils.jl")
+		include("CommonUI/utils/DF_utils.jl")
 		@info "Module DF_utils is loaded"
 	catch
 		try 
@@ -50,7 +50,7 @@ end |> WideCell
 
 # ╔═╡ f30515e4-6f66-4209-8e6a-12c5808487ad
 let
-notebook_path= joinpath(@__DIR__, "../App.jl")
+notebook_path= joinpath(@__DIR__, "../HydraFluids.pluto.jl")
 
 Markdown.parse("""You can return to the main page using [this link](./open?path=$notebook_path)""")
 end |> WideCell
@@ -338,7 +338,7 @@ end
 
 # ╔═╡ 237320e6-6b38-4f95-969f-6c8f64a3ee16
 let
-	notebook_path= joinpath(@__DIR__, "common/RunSimulations.jl")
+	notebook_path= joinpath(@__DIR__, "CommonUI/RunSimulations.jl")
 
 	Markdown.parse("Now that your parameters are generated, you can run the simulation using [this page](./open?path=$notebook_path)")
 end

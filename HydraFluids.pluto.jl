@@ -7,6 +7,19 @@ using InteractiveUtils
 # ╔═╡ 1ead4d39-e5e7-4117-9e14-dfdcd92be319
 using PlutoUI, PlutoTeachingTools
 
+# ╔═╡ 55d09e04-ecb3-4116-b33a-2c6202cc80f8
+begin
+	common_path = joinpath(@__DIR__, "CommonUI")
+
+    if !isdir(common_path)
+        run(`git clone https://github.com/Lu-Dumoulin/CommonUI.jl $(common_path)`)
+    else
+        run(`git -C $(common_path) pull`)
+        println("✓ Common UI up to date")
+    end
+
+end
+
 # ╔═╡ df281ea8-2a3f-4e07-9219-dabb64b3cb07
 TableOfContents()
 
@@ -36,7 +49,7 @@ WideCell(md"""
 
 # ╔═╡ 237320e6-6b38-4f95-969f-6c8f64a3ee16
 let
-	notebook_path= joinpath(@__DIR__, "src/common/RunSimulations.jl")
+	notebook_path= joinpath(@__DIR__, "src/CommonUI/RunSimulations.jl")
 
 Markdown.parse("""Now that your parameters are generated and saved as `/src/sim/DF.csv`, you can run the simulation using [this page](./open?path=$notebook_path)""")
 end
@@ -48,7 +61,7 @@ WideCell(md"""
 
 # ╔═╡ 554aaedd-8d7c-4e6b-b74c-909d29220b1c
 let
-	notebook_path= joinpath(@__DIR__, "src/common/DataVisualisation.jl")
+	notebook_path= joinpath(@__DIR__, "src/CommonUI/DataVisualisation.jl")
 
 Markdown.parse("""Once the first data file is saved you can use [this page](./open?path=$notebook_path) to visualise it""")
 end
@@ -373,6 +386,7 @@ version = "1.64.0+1"
 """
 
 # ╔═╡ Cell order:
+# ╠═55d09e04-ecb3-4116-b33a-2c6202cc80f8
 # ╟─1ead4d39-e5e7-4117-9e14-dfdcd92be319
 # ╟─df281ea8-2a3f-4e07-9219-dabb64b3cb07
 # ╟─5b303aaf-bf43-4ef0-8654-65349c9d63ea
