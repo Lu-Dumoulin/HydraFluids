@@ -25,9 +25,9 @@ TableOfContents()
 # ╔═╡ c87a9b8e-bf88-4fb7-961e-d1b2f7533f60
 WideCell(
 md"""
-This notebook allows you to study the hydrodynamic of renewing active fluids with or without orientation fields. 
+This notebook allows you to study the hydrodynamics of renewing active fluids with or without orientation fields. 
 	
-To do so, it uses two github repo that are common between different projects: <https://github.com/Lu-Dumoulin/CommonUI> and <https://github.com/Lu-Dumoulin/DataVisualisation.jl>. You don't need to download it now, everything will be automatically cloned.
+To do so, it uses two GitHub repositories that are common between different projects: <https://github.com/Lu-Dumoulin/CommonUI> and <https://github.com/Lu-Dumoulin/DataVisualisation.jl>. You don't need to download it now, everything will be automatically cloned.
 
 
 Using this notebook you can recover results from these two papers (<https://arxiv.org/pdf/2506.03795>, <https://arxiv.org/pdf/2601.18307>) and more...
@@ -45,7 +45,7 @@ Equations and schematics can be found in these papers:
 
 # ╔═╡ 24b9fae5-1551-4014-8bb8-79b729152446
 WideCell(md"""
-To go further you need to pull the CommonUI folder from my github
+To go further you need to pull the CommonUI folder from my GitHub
 
 Switch to pull: $(@bind pull_commonui Switch()).
 """)
