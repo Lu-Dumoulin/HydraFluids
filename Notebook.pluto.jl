@@ -22,11 +22,25 @@ using PlutoUI, PlutoTeachingTools
 # ╔═╡ df281ea8-2a3f-4e07-9219-dabb64b3cb07
 TableOfContents()
 
+# ╔═╡ c87a9b8e-bf88-4fb7-961e-d1b2f7533f60
+WideCell(
+md"""
+This notebook allows you to study the hydrodynamic of renewing active fluids with or without orientation fields. 
+	
+To do so, it uses two github repo that are common between different projects: <https://github.com/Lu-Dumoulin/CommonUI> and <https://github.com/Lu-Dumoulin/DataVisualisation.jl>. You don't need to download it now, everything will be automatically cloned.
+
+
+Using this notebook you can recover results from these two papers (<https://arxiv.org/pdf/2506.03795>, <https://arxiv.org/pdf/2601.18307>) and more...
+"""
+)
+
 # ╔═╡ 5b303aaf-bf43-4ef0-8654-65349c9d63ea
 WideCell(md"""
 ## 0. Equations and schematics
 
-``\partial_t\rho = ... ``
+Equations and schematics can be found in these papers: 
+ * [Defect states in compressible active polar fluids with turnover](https://arxiv.org/pdf/2506.03795)
+ * [Active topological strings in renewing nematopolar fluids](https://arxiv.org/pdf/2601.18307)
 """)
 
 # ╔═╡ 24b9fae5-1551-4014-8bb8-79b729152446
@@ -411,6 +425,7 @@ version = "1.64.0+1"
 # ╔═╡ Cell order:
 # ╟─1ead4d39-e5e7-4117-9e14-dfdcd92be319
 # ╟─df281ea8-2a3f-4e07-9219-dabb64b3cb07
+# ╟─c87a9b8e-bf88-4fb7-961e-d1b2f7533f60
 # ╟─5b303aaf-bf43-4ef0-8654-65349c9d63ea
 # ╟─24b9fae5-1551-4014-8bb8-79b729152446
 # ╟─ea05ade9-242f-429e-b8f9-9d80e597cbe2
