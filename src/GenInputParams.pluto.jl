@@ -48,9 +48,30 @@ begin
 	TableOfContents()
 end |> WideCell
 
+# ╔═╡ f6df50a9-438b-42fd-ac78-60a0441323a3
+md"""
+If the CommonUI folder has not been yet pulled:
+
+Switch to pull: $(@bind pull_commonui Switch()).
+"""
+
+# ╔═╡ 50b20724-5c6a-4917-9f6c-122e34765632
+if pull_commonui
+    
+	common_path = joinpath(@__DIR__, "CommonUI/")
+
+    if !isdir(common_path)
+        run(`git clone https://github.com/Lu-Dumoulin/CommonUI.git $(common_path)`)
+    else
+        run(`git -C $(common_path) pull`)
+        println("✓ Common UI up to date")
+    end
+
+end
+
 # ╔═╡ f30515e4-6f66-4209-8e6a-12c5808487ad
 let
-notebook_path= joinpath(@__DIR__, "../HydraFluids.pluto.jl")
+notebook_path= joinpath(@__DIR__, "../Notebook.pluto.jl")
 
 Markdown.parse("""You can return to the main page using [this link](./open?path=$notebook_path)""")
 end |> WideCell
@@ -338,7 +359,7 @@ end
 
 # ╔═╡ 237320e6-6b38-4f95-969f-6c8f64a3ee16
 let
-	notebook_path= joinpath(@__DIR__, "CommonUI/RunSimulations.jl")
+	notebook_path= joinpath(@__DIR__, "CommonUI/RunSimulations.pluto.jl")
 
 	Markdown.parse("Now that your parameters are generated, you can run the simulation using [this page](./open?path=$notebook_path)")
 end
@@ -857,6 +878,8 @@ version = "1.64.0+1"
 """
 
 # ╔═╡ Cell order:
+# ╟─f6df50a9-438b-42fd-ac78-60a0441323a3
+# ╟─50b20724-5c6a-4917-9f6c-122e34765632
 # ╟─1ead4d39-e5e7-4117-9e14-dfdcd92be319
 # ╟─f30515e4-6f66-4209-8e6a-12c5808487ad
 # ╟─6c39efc0-de1c-43f3-912f-fb887c0c2632

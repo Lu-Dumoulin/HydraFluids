@@ -4,21 +4,20 @@
 using Markdown
 using InteractiveUtils
 
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    #! format: off
+    return quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+    #! format: on
+end
+
 # ╔═╡ 1ead4d39-e5e7-4117-9e14-dfdcd92be319
 using PlutoUI, PlutoTeachingTools
-
-# ╔═╡ 55d09e04-ecb3-4116-b33a-2c6202cc80f8
-begin
-	common_path = joinpath(@__DIR__, "CommonUI")
-
-    if !isdir(common_path)
-        run(`git clone https://github.com/Lu-Dumoulin/CommonUI.jl $(common_path)`)
-    else
-        run(`git -C $(common_path) pull`)
-        println("✓ Common UI up to date")
-    end
-
-end
 
 # ╔═╡ df281ea8-2a3f-4e07-9219-dabb64b3cb07
 TableOfContents()
@@ -30,6 +29,30 @@ WideCell(md"""
 ``\partial_t\rho = ... ``
 """)
 
+# ╔═╡ 24b9fae5-1551-4014-8bb8-79b729152446
+WideCell(md"""
+To go further you need to pull the CommonUI folder from my github
+
+Switch to pull: $(@bind pull_commonui Switch()).
+""")
+
+# ╔═╡ ea05ade9-242f-429e-b8f9-9d80e597cbe2
+if pull_commonui
+	common_path = joinpath(@__DIR__, "src/CommonUI/")
+
+    if !isdir(common_path)
+        run(`git clone https://github.com/Lu-Dumoulin/CommonUI.git $(common_path)`)
+    else
+        run(`git -C $(common_path) pull`)
+        println("✓ Common UI up to date")
+    end
+md"""
+"""
+else
+md"""
+"""
+end |> WideCell
+
 # ╔═╡ 6c39efc0-de1c-43f3-912f-fb887c0c2632
 WideCell(md"""
 ## 1. Generate a dataframe with the input parameters
@@ -37,10 +60,10 @@ WideCell(md"""
 
 # ╔═╡ c4fd031f-154e-47a9-a212-3860c0ac9cc4
 let
-	notebook_path= joinpath(@__DIR__, "src/GenInputParams.jl")
+	notebook_path= joinpath(@__DIR__, "src/GenInputParams.pluto.jl")
 
-Markdown.parse("""The first step is to generate a DataFrame containing the input parameters using [this page](./open?path=$notebook_path)""")
-end
+	Markdown.parse("""The first step is to generate a DataFrame containing the input parameters using [this page](./open?path=$notebook_path)""")
+end |> WideCell
 
 # ╔═╡ 01c42f97-4bc2-4e2d-8524-1981a836e3c4
 WideCell(md"""
@@ -49,10 +72,10 @@ WideCell(md"""
 
 # ╔═╡ 237320e6-6b38-4f95-969f-6c8f64a3ee16
 let
-	notebook_path= joinpath(@__DIR__, "src/CommonUI/RunSimulations.jl")
+	notebook_path= joinpath(@__DIR__, "src/CommonUI/RunSimulations.pluto.jl")
 
 Markdown.parse("""Now that your parameters are generated and saved as `/src/sim/DF.csv`, you can run the simulation using [this page](./open?path=$notebook_path)""")
-end
+end |> WideCell
 
 # ╔═╡ 570fdebd-57da-4494-81f7-3dddb1a68bed
 WideCell(md"""
@@ -61,10 +84,10 @@ WideCell(md"""
 
 # ╔═╡ 554aaedd-8d7c-4e6b-b74c-909d29220b1c
 let
-	notebook_path= joinpath(@__DIR__, "src/CommonUI/DataVisualisation.jl")
+	notebook_path= joinpath(@__DIR__, "src/CommonUI/DataVisualisation.pluto.jl")
 
 Markdown.parse("""Once the first data file is saved you can use [this page](./open?path=$notebook_path) to visualise it""")
-end
+end |> WideCell
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -386,10 +409,11 @@ version = "1.64.0+1"
 """
 
 # ╔═╡ Cell order:
-# ╠═55d09e04-ecb3-4116-b33a-2c6202cc80f8
 # ╟─1ead4d39-e5e7-4117-9e14-dfdcd92be319
 # ╟─df281ea8-2a3f-4e07-9219-dabb64b3cb07
 # ╟─5b303aaf-bf43-4ef0-8654-65349c9d63ea
+# ╟─24b9fae5-1551-4014-8bb8-79b729152446
+# ╟─ea05ade9-242f-429e-b8f9-9d80e597cbe2
 # ╟─6c39efc0-de1c-43f3-912f-fb887c0c2632
 # ╟─c4fd031f-154e-47a9-a212-3860c0ac9cc4
 # ╟─01c42f97-4bc2-4e2d-8524-1981a836e3c4
