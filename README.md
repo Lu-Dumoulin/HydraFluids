@@ -155,9 +155,17 @@ All parameters are set in `GenInputParams.pluto.jl` and stored as columns in `DF
 
 ---
 
+## Preview
+
+![Data Visualisation](docs/DataVisu.png)
+
+*Interactive data visualisation of a nematopolar simulation: density heatmap with polar (white arrows) and nematic (black bars) field overlays.*
+
+---
+
 ## Related Repositories
 
 | Repository | Role |
 |---|---|
 | [CommonUI](https://github.com/Lu-Dumoulin/CommonUI) | Shared interactive notebooks and Julia utilities for simulation workflows |
-| [DataVisualisation.jl](https://github.com/Lu-Dumoulin/DataVisualisation.jl) | Interactive data exploration for `.jld2` simulation output |
+| [DataVisualisation.jl](https://github.com/Lu-Dumoulin/DataVisualisation.jl) | Interactive data exploration for `.jld` or `.jld2` simulation output |
