@@ -157,9 +157,17 @@ All parameters are set in `GenInputParams.pluto.jl` and stored as columns in `DF
 
 ## Preview
 
+![Generate input parameters](docs/GenInputs.png)
+
+*Step 1 — Interactive parameter sweep definition in `GenInputParams.pluto.jl`.*
+
+![Run simulations](docs/RunSims.png)
+
+*Step 2 — Job launcher in `RunSimulations.pluto.jl` (local or Slurm cluster).*
+
 ![Data Visualisation](docs/DataVisu.png)
 
-*Interactive data visualisation of a nematopolar simulation: density heatmap with polar (white arrows) and nematic (black bars) field overlays.*
+*Step 3 — Interactive data visualisation of a nematopolar simulation: density heatmap with polar (white arrows) and nematic (black bars) field overlays.*
 
 ---
 

@@ -50,7 +50,7 @@ end |> WideCell
 
 # ╔═╡ f6df50a9-438b-42fd-ac78-60a0441323a3
 md"""
-If the CommonUI folder has not been yet pulled:
+If the CommonUI folder has not been pulled yet:
 
 Switch to pull: $(@bind pull_commonui Switch()).
 """
@@ -87,19 +87,19 @@ WideCell(md"""
 
 # ╔═╡ cbb0ecab-37d1-4123-807e-14fabba14115
 WideCell(md"""
-#### System size and Discretization
+#### System size and Discretisation
 """)
 
 # ╔═╡ 33dc1510-fa01-44cf-a7e6-b026b18ceb41
 WideCell(TwoColumn(
 md"""
 ##### Size
-Suqare lattice length, multiple of 16, N = 16 × $(@bind N_str TextField(default="32, 64"))  
+Square lattice length, multiple of 16, N = 16 × $(@bind N_str TextField(default="32, 64"))  
 
-##### Discretization
-Spacial discretization: Δx = Δy = Δ = 2 ^(- $(@bind dx_str TextField(default="6")))
+##### Discretisation
+Spatial discretisation: Δx = Δy = Δ = 2 ^(- $(@bind dx_str TextField(default="6")))
 
-Time discretization: Maximal Δt = $(@bind dt_max_str TextField(default="0.01")),
+Time discretisation: Maximal Δt = $(@bind dt_max_str TextField(default="0.01")),
 	
 Initial Δt = $(@bind dt_ini_str TextField(default="0.001"))
 """,
