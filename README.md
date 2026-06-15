@@ -23,7 +23,7 @@ The free energy functional is:
 
 $$\mathcal{F} = \int \mathrm{d}^2r \left[ f_\rho + f_p + f_Q + f_{pQ} \right]$$
 
-with renewal dynamics, flow alignment, active stresses, and adaptive time-stepping. See the papers above for the full equations.
+. See the papers above for the full equations.
 
 ---
 
