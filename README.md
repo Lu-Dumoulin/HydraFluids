@@ -1,6 +1,6 @@
 # HydraFluids
 
-A [Pluto.jl](https://plutojl.org/)-based simulation framework for studying the hydrodynamics of **renewing active fluids** with optional orientation fields (polar, nematic, or nematopolar). Simulations run on CPU or GPU (CUDA / Metal) using [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) with pseudo-spectral (FFT) spatial discretization.
+A [Pluto.jl](https://plutojl.org/)-based simulation framework for studying the **hydrodynamics of renewing active fluids** with optional orientation fields (polar, nematic, or nematopolar). Simulations run on CPU or GPU (CUDA / Metal) using [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) with pseudo-spectral (FFT) spatial discretization.
 
 Results from this codebase are published in:
 - [Defect states in compressible active polar fluids with turnover](https://arxiv.org/pdf/2506.03795)
