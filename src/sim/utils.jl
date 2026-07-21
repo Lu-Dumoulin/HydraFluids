@@ -1,3 +1,25 @@
+import Pkg
+
+"""
+    ensure_installed(pkgs...)
+
+Make sure each named package is available in the active environment, installing any that are
+missing (so a fresh checkout self-provisions). Reusable across projects — call it *before*
+the matching `using`/`import`. Each package is loaded to test availability; on failure it is
+installed and loaded. Standard-library packages don't need this.
+"""
+function ensure_installed(pkgs::AbstractString...)
+    for pkg in pkgs
+        try
+            @eval Main import $(Symbol(pkg))          # loads it if installed; throws if not
+        catch
+            @info "Installing missing package: $pkg"
+            Pkg.add(pkg)
+            @eval Main import $(Symbol(pkg))
+        end
+    end
+end
+
 # Type of nucleator dynamics if the nucleator exist
 abstract type OrientationTrait end
 struct IsNone    <: OrientationTrait end  # No orientation field

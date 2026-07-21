@@ -4,12 +4,19 @@ mkpath(string(file,"/Data/") )
 println(idx) 
 
 
+include("utils.jl")   # provides ensure_installed(...) + the trait helpers
+
+# Self-provision: install any missing (non-stdlib) dependencies before loading them.
+ensure_installed("CSV", "DataFrames", "JLD2", "ParallelStencil", "FFTW", "Roots", "Glob")
+
 using DelimitedFiles, CSV, DataFrames, Dates, Printf, JLD2, ParallelStencil, Random, FFTW, Statistics, Random, Roots, Glob
-# CUDA, Metal, AMDGPU, oneAPI, KernelAbstractions, Threads, Polyester
 @show const USE_GPU = Base.parse(Bool, ENV["use_gpu"])#true # false #true
 @show const TF = Sys.isapple() && USE_GPU ? Float32 : Float64
 @show const TI = Int64
 @show const TC = Sys.isapple() && USE_GPU ? ComplexF32 : ComplexF64
+
+# The GPU backend package must be present before @init_parallel_stencil imports it.
+USE_GPU && ensure_installed(Sys.isapple() ? "Metal" : "CUDA")
 
 @static if USE_GPU
     @static if Sys.isapple()
@@ -25,8 +32,6 @@ else
 end
 @show TA
 @show @current_hardware
-
-include("Utils.jl")
 
 dir_df = @__DIR__
 df = CSV.read(joinpath(dir_df,"DF.csv"), DataFrame)[idx,:]
