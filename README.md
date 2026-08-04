@@ -42,7 +42,7 @@ HydraFluids/
         ├── main.jl            # Simulation entry point (called by RunSimulations)
         ├── InputParams.jl     # Reads parameters from DF.csv row
         ├── kernels.jl         # GPU/CPU kernels (ParallelStencil)
-        ├── utils.jl           # Trait system, IO helpers
+        ├── utils.jl           # Trait system, IO helpers, package self-install (ensure_installed)
         └── DF.csv             # Generated parameter table (one row per simulation)
 ```
 
