@@ -321,6 +321,8 @@ first convergence check `cce_base` = $(@bind cce_base_str TextField((6,1),defaul
 largest check interval `cce_cap` = $(@bind cce_cap_str TextField((6,1),default="100")),
 max sweeps = $(@bind max_iter_str TextField((8,1),default="100000")),
 tolerance = $(@bind error_threshold_str TextField((8,1),default="1e-6"))
+
+*Memory:* partial garbage collection every $(@bind gc_every_str TextField((6,1),default="20")) time steps (0 = off; keeps memory bounded under a cluster memory limit)
 """)
 
 # ╔═╡ d3a1c5e0-5b7e-4c2a-9f1e-0a6b2c4d8e02
@@ -329,8 +331,9 @@ begin
 		Int.(UI_utils.parse_values(cce_base_str)),
 		Int.(UI_utils.parse_values(cce_cap_str)),
 		Int.(UI_utils.parse_values(max_iter_str)),
-		Number.(UI_utils.parse_values(error_threshold_str)) ]
-	listname_solver = ["solver","cce_base","cce_cap","max_iter","error_threshold"]
+		Number.(UI_utils.parse_values(error_threshold_str)),
+		Int.(UI_utils.parse_values(gc_every_str)) ]
+	listname_solver = ["solver","cce_base","cce_cap","max_iter","error_threshold","gc_every"]
 	UI_utils.print_list(listname_solver, listtab_solver)
 end |> WideCell
 

@@ -49,6 +49,11 @@ _ip_get(k, default) = (k in propertynames(df)) ? df[k] : default
 @show const max_iter::Int       = round(Int, _ip_get(:max_iter, 100000))
 @show const error_threshold::TF = TF(_ip_get(:error_threshold, 1e-6))
 
+# Memory hygiene: a partial garbage collection, GC.gc(false), every `gc_every` time steps keeps the
+# process's memory bounded under a cluster memory limit (the CPU backend allocates a little at every
+# kernel launch, i.e. ~1 MB per step with :jacobi). 0 disables it.
+@show const gc_every::Int = round(Int, _ip_get(:gc_every, 20))
+
 # ------ Initialization of simulation grids ------- #
 # System size (square)
 const N::TI  = TF(df[:N]);    # Must be a power of 2!

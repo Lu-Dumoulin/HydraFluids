@@ -99,6 +99,7 @@ All parameters are set in `GenInputParams.pluto.jl` and stored as columns in `DF
 | `solver` | Spatial scheme: `fft` (default) or `jacobi` — see [Numerical Method](#numerical-method) |
 | `cce_base`, `cce_cap` | `jacobi` only: first and largest interval (in sweeps) between convergence checks (defaults 10, 100) |
 | `max_iter`, `error_threshold` | `jacobi` only: sweep limit and tolerance on the change between sweeps (defaults 10⁵, 10⁻⁶) |
+| `gc_every` | Partial garbage collection every `gc_every` time steps (default 20, `0` = off). Keeps memory bounded under a cluster memory limit; no measurable cost and no effect on results. |
 
 Columns added after a table was generated are optional: an older `DF.csv` without `solver` runs with `fft`.
 

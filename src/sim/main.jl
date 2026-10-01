@@ -22,6 +22,7 @@ function main()
         # Perform adaptive time-step every Δt_check (DF column t_check)
         Δt_Check   = Δt_check;
         NextCheck  = 0;
+        nstep      = 0;          # time-step counter (periodic GC)
         eps        = TF(1e-8); # Small constant (TF keeps the adaptive Δt in Float32 on Metal).
         
         # Dynamical fields
@@ -214,6 +215,8 @@ function main()
             # Update the density fields.
             @. ρ += Δt*(-∂xρVx  -∂yρVy  + D0*Δρ - Rd*(ρ-ρ0))
             t += Δt
+            nstep += 1
+            gc_every > 0 && nstep % gc_every == 0 && GC.gc(false)   # bound memory (see InputParams.jl)
         end
     end
     end_time = time()
