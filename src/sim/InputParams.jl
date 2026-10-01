@@ -21,7 +21,7 @@ USE_GPU && ensure_installed(Sys.isapple() ? "Metal" : "CUDA")
 @static if USE_GPU
     @static if Sys.isapple()
         @init_parallel_stencil(Metal, TF, 2, inbounds=true)
-        const TA = Metal.MltArray
+        const TA = Metal.MtlArray
     else
         @init_parallel_stencil(CUDA, TF, 2, inbounds=true)
         const TA = CUDA.CuArray
@@ -35,6 +35,19 @@ end
 
 dir_df = @__DIR__
 df = CSV.read(joinpath(dir_df,"DF.csv"), DataFrame)[idx,:]
+
+# Optional-column getter: tables written before a column existed still load, with its default.
+_ip_get(k, default) = (k in propertynames(df)) ? df[k] : default
+
+# ------ Spatial scheme / velocity solver ------- #
+# :fft (spectral + Fourier solve; CUDA and CPU) | :jacobi (finite differences + iteration; any
+# backend, including Metal, which has no FFT). See operators.jl.
+@show const Solver_trait = get_solver(Symbol(_ip_get(:solver, "fft")))
+# Iterative-solver settings (used by :jacobi only)
+@show const cce_base::Int       = round(Int, _ip_get(:cce_base, 10))    # first convergence-check interval
+@show const cce_cap::Int        = round(Int, _ip_get(:cce_cap, 100))    # largest check interval
+@show const max_iter::Int       = round(Int, _ip_get(:max_iter, 100000))
+@show const error_threshold::TF = TF(_ip_get(:error_threshold, 1e-6))
 
 # ------ Initialization of simulation grids ------- #
 # System size (square)
@@ -63,8 +76,10 @@ const Lkx::TI = length(kx);                   # N/2+1
 kx2 = kx.*kx
 ky2 = ky.*ky
 # FFT tools to calculate derivatives
-W  = plan_rfft(@ones(N, N))    # Fourier-transform matrix operator
-Wi = inv(W)                                   # Inverse-Fourier transform
+# Created only for a spectral scheme: the finite-difference schemes take no transform, which is
+# what lets them run on Metal (Metal.jl has no plan_rfft).
+W  = is_spectral(Solver_trait) ? plan_rfft(@ones(N, N)) : nothing   # Fourier-transform operator
+Wi = is_spectral(Solver_trait) ? inv(W)                 : nothing   # inverse transform
 
 # ------ GPU parameters ↔ Real space mapping ------- #
 # We divide the (N, N) grid into Bx*By blocks, which are further divided into wraps.
@@ -111,7 +126,7 @@ blocks_FFT = (div(B,2)+1, B)
 # Density
 @show const ρ0::TF  = TF(df[:rho0])          
 # Initialization
-@show const Initialization = "Homogeneous" # Choose between "Homogeneous", "Polarized","Loop"
+@show const Initialization = String(df[:initialisation])   # "Homogeneous", "Polarized" or "Loop"
 @show const seed::TI = TI(df[:seed])                # Seed for random number generator
 @show const η0::TF   = TF(df[:eta_rho])            # Noise amplitude for initial conditions on density
 @show const ηP::TF   = TF(df[:eta_p])

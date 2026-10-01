@@ -1,10 +1,14 @@
 # This code is the main script to run 2d hydrodynamic simulations of nematopolar fluids.
 
 include("InputParams.jl")
-include("kernels.jl")
+include("kernels.jl")     # stress, Fourier velocity solve, P/Q update
+include("operators.jl")   # spatial scheme (:fft or :jacobi): derivatives, force balance, density fluxes
 
 function main()
-    Random.seed!(seed)
+    # Dedicated random stream for the initial noise: GPU set-up (e.g. Metal kernel compilation spawning
+    # tasks) draws from the global stream, so seeding that one gave backend-dependent noise.
+    # Xoshiro(seed) yields the same numbers as Random.seed!(seed) did on the CPU.
+    rng = Xoshiro(seed)
     @inbounds begin
         # ------ VARIABLE INITIALIZATION ------ #
         hasP = is_polar(Orientation_trait)
@@ -15,10 +19,10 @@ function main()
         t = 0;
         NextStoreTime = 0;
         global Δt = Δt_ini
-        # Perform adaptive time-step every Δt_check
-        Δt_Check   = 1.0;
+        # Perform adaptive time-step every Δt_check (DF column t_check)
+        Δt_Check   = Δt_check;
         NextCheck  = 0;
-        eps        = 1e-8;     # Small constant.
+        eps        = TF(1e-8); # Small constant (TF keeps the adaptive Δt in Float32 on Metal).
         
         # Dynamical fields
         ρ     = @zeros(N, N)         # Density field
@@ -52,15 +56,20 @@ function main()
         factor_∂x  = TA(zeros(TC, Lkx, N))
         factor_∂y  = TA(zeros(TC, Lkx, N))
         factor_Δ   = @zeros(Lkx, N)
-        # Initialize the FFT factors (such as F[∂x], F[∂x^2], ...) on the recprocal grid
-        @parallel blocks_FFT threads compute_FFTderivative_factors!(factor_∂x, factor_∂y, factor_Δ, kx, ky, kx2, ky2)
+        # Initialize the FFT factors (such as F[∂x], F[∂x^2], ...) on the reciprocal grid (spectral scheme only)
+        is_spectral(Solver_trait) &&
+            @parallel blocks_FFT threads compute_FFTderivative_factors!(factor_∂x, factor_∂y, factor_Δ, kx, ky, kx2, ky2)
 
         # FFT
-        Fρ  = TA(zeros(TC, Lkx, N))      # FFT of ρ
         FV  = TA(zeros(TC, Lkx, N, 2))   # FFT of V
-        FP  = hasP ? TA(zeros(TC, Lkx, N, 2)) : nothing   # FFT of P
-        FQ  = hasP ? TA(zeros(TC, Lkx, N, 2)) : nothing   # FFT of Q
         Fσ  = TA(zeros(TC, Lkx, N, 4))   # FFT of σ
+        # Work bundle for the spatial scheme (operators.jl). Spectral: FFT plans, derivative factors,
+        # and three reusable FFT buffers (Rtmp real; F0, Fa complex) so the time loop allocates
+        # nothing. Finite differences: the force G = ∇·σ and the Jacobi iteration's second array.
+        work = (W = W, Wi = Wi, factor_∂x = factor_∂x, factor_∂y = factor_∂y, factor_Δ = factor_Δ,
+                FV = FV, Fσ = Fσ,
+                Rtmp = @zeros(N, N), F0 = TA(zeros(TC, Lkx, N)), Fa = TA(zeros(TC, Lkx, N)),
+                G = @zeros(N, N, 2), v_temp = @zeros(N, N, 2))
         
 
         # ------ INITIAL CONDITIONS ------ #
@@ -101,9 +110,9 @@ function main()
             ICP = hasP ? zeros(TF, N, N, 2) : nothing
             ICQ = hasQ ? zeros(TF, N, N, 2) : nothing
             # Initialize noise for density fields and for polar field, respectively.
-            Noiseρ  = rand(N, N)
-            NoiseP  = hasP ? rand(N, N, 2) : nothing
-            NoiseQ  = hasP ? rand(N, N, 2) : nothing
+            Noiseρ  = rand(rng, N, N)
+            NoiseP  = hasP ? rand(rng, N, N, 2) : nothing
+            NoiseQ  = hasQ ? rand(rng, N, N, 2) : nothing
             get_CentredNoise!(Noiseρ, η0)   
             get_CentredNoisePQ!(NoiseP, ηP)
             get_CentredNoisePQ!(NoiseQ, ηQ)
@@ -117,6 +126,14 @@ function main()
                 Iρ[:,:] .= 1.0
                 ICQ[:,:,1] .= 0.5*S1
                 ICP[:,:,1] .= √(0.5*S1*abs(χ)/βp)
+            # Polar only: |p|² = α_p/β_p at ρ = ρ0.
+            elseif Initialization=="Polarized" && hasP
+                Iρ[:,:] .= 1.0
+                ICP[:,:,1] .= √(αp/βp)
+            # Nematic only: Tr Q² = 2 Q1² = α_Q/(2β_Q) at ρ = ρ0 (the χ = 0 case of the above).
+            elseif Initialization=="Polarized" && hasQ
+                Iρ[:,:] .= 1.0
+                ICQ[:,:,1] .= 0.5*√(αQ/βQ)
             # Initialize the system in a loop configuration.
             # Fields are polarized along x, and they exhibit a defect 
             # loop.
@@ -127,8 +144,8 @@ function main()
                 ICP[:,:,1] .= √(0.5*S1*abs(χ)/βp)
                 get_Loop!(Iρ, ICP, ICQ, 0.25*L, 0.1)
             else
-                println("Error: the system was not correctly initialized.\n")
-                return nothing
+                error("initialisation = $Initialization is not available with orientation = $(df[:orientation]): " *
+                      "Polarized needs a polar or nematic field, Loop needs nematopolar.")
             end
             @. ρ_host[:,:]   = ρHSS  * (Iρ + Noiseρ)
             hasP ? (@. P_host[:,:,:] = ICP + NoiseP) : nothing
@@ -149,7 +166,7 @@ function main()
             if (t >= NextStoreTime)
 
                 if any(isnan, ρ)
-                    print("Error: NaN. Stop simulation.")
+                    println("Error: NaN. Stop simulation.")
                     return 1    # If there are errors, stop the simulations.
                 end
 
@@ -163,52 +180,26 @@ function main()
             end
 
             # ----- Time-evolution ----- # 
-            # 1/ We compute the non-viscous stress in real space. To do so,
-            # we first compute all gradient terms in Fourier space, then perform
-            # the inverse transform.  
-            # Fourier-transform of the fields
-            Fρ  .= W * ρ
-            
-            # Polar and nematic fields → F[P], F[Q] → ∇P, ∇Q, ΔP in real space
-            for i=1:2
-                if hasP
-                    @views FP[:,:,i]    .= W  * P[:,:,i]
-                    @views ∇P[:,:,i]    .= Wi * (factor_∂x .* FP[:,:,i]) # Update ∂x P_{x,y} → Components 1,2
-                    @views ∇P[:,:,2+i]  .= Wi * (factor_∂y .* FP[:,:,i]) # Update ∂y P_{x,y} → Components 3,4
-                    @views ΔP[:,:,i]    .= Wi * (factor_Δ  .* FP[:,:,i]) # Update Laplacian of P
-                end
-                if hasQ 
-                    @views FQ[:,:,i]    .= W  * Q[:,:,i]
-                    @views ∇Q[:,:,i]    .= Wi * (factor_∂x .* FQ[:,:,i]) # Update ∂x Q_{1,2} → Components 1,2
-                    @views ∇Q[:,:,2+i]  .= Wi * (factor_∂y .* FQ[:,:,i]) # Update ∂y Q_{1,2} → Components 3,4
-                    @views ΔQ[:,:,i]    .= Wi * (factor_Δ  .* FQ[:,:,i]) # Update Laplacian of Q
-                end
-            end
-
-            # Actin concentration ρ → F[ρ] → ∇ρ in real space
-            @views ∇ρ[:,:,1] .= Wi * (factor_∂x .* Fρ)
-            @views ∇ρ[:,:,2] .= Wi * (factor_∂y .* Fρ)
-            Δρ        .= Wi * (factor_Δ  .* Fρ)
+            # 1/ Non-viscous stress in real space. The derivatives ∇ρ, Δρ, ∇P, ΔP, ∇Q, ΔQ come
+            # from the selected scheme (spectral or finite differences).
+            compute_gradients!(Solver_trait, ρ, ∇ρ, Δρ, P, ∇P, ΔP, Q, ∇Q, ΔQ, work)
             # Compute chemical potential, molecular field, stress
             @parallel blocks threads Compute_stress!(σ_nv, h, H, ρ, ∇ρ, P, ∇P, ΔP, Q, ∇Q, ΔQ)
-            
-            # 2/ We Fourier-transform the non-viscous stress and determine the velocity
-            # in Fourier space.
-            for i=1:4
-                @views Fσ[:,:,i] .= W * σ_nv[:,:,i]
-            end
-            # Update the velocity in Fourier space, then back to real space
-            @parallel blocks_FFT threads UpdateVelocity_Fourier!(FV, Fσ, kx, ky) 
-            for i=1:2
-                @views ∇V[:,:,i]   .= Wi * (factor_∂x .* FV[:,:,i]) # Update ∂x V_{x,y} → Components 1,2
-                @views ∇V[:,:,i+2] .= Wi * (factor_∂y .* FV[:,:,i]) # Update ∂y V_{x,y} → Components 3,4
-                @views V[:,:,i]    .= Wi * FV[:,:,i]
-            end
+
+            # 2/ Solve the force balance ξV − (∇²V + ∇(∇·V)) = ∇·σ for V and ∇V
+            # (exactly in Fourier space for :fft, by Jacobi iteration for :jacobi).
+            solve_velocity!(Solver_trait, V, ∇V, σ_nv, work)
 
             # Adaptive timestep check.
             if (t >= NextCheck)
                 max_V =  @views mapreduce( (x, y) -> x^2 + y^2, max, V[:,:,1], V[:,:,2] ) 
-                global Δt = minimum([Δt*1.25, Δt_max, 0.05*Δ/(sqrt(max_V)+eps)])
+                global Δt = min(Δt*TF(1.25), Δt_max, TF(0.05)*Δ/(sqrt(max_V)+eps))
+                # A NaN velocity makes Δt NaN, which would end the time loop as if t_end were
+                # reached; stop with an error instead.
+                if !isfinite(Δt)
+                    println("Error: non-finite time step (NaN or Inf in the velocity) at t = ", t, ". Stop simulation.")
+                    return 1
+                end
                 NextCheck += Δt_Check;
             end
 
@@ -218,9 +209,8 @@ function main()
             end
             
             # 4/ Dynamics of the density fields
-            # Advective terms in Fourier → real space
-            @views ∂xρVx .= Wi * (factor_∂x .* (W * (ρ .* V[:,:,1]) ) )
-            @views ∂yρVy .= Wi * (factor_∂y .* (W * (ρ .* V[:,:,2]) ) )
+            # Advective fluxes ∂x(ρVx), ∂y(ρVy) from the selected scheme
+            density_advection!(Solver_trait, ∂xρVx, ∂yρVy, ρ, V, work)
             # Update the density fields.
             @. ρ += Δt*(-∂xρVx  -∂yρVy  + D0*Δρ - Rd*(ρ-ρ0))
             t += Δt
@@ -239,4 +229,5 @@ function main()
 end
 
 # Start simulation
-main()
+# A failed run (main returns 1) exits with a non-zero status, so Slurm reports FAILED.
+main() == 1 && exit(1)

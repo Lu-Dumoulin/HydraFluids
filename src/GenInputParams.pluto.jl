@@ -44,6 +44,7 @@ begin
 
 	const ENUM_ORI    = ["none", "nematic", "polar", "nematopolar"];
 	const ENUM_INI   = ["Homogeneous", "Polarized", "Loop"];
+	const ENUM_SOLVER = ["fft", "jacobi"];   # spatial schemes registered in sim/utils.jl (SOLVERS)
 
 	TableOfContents()
 end |> WideCell
@@ -306,11 +307,38 @@ begin
 	UI_utils.print_list(listname_pq, listtab_pq)
 end |> WideCell
 
+# ╔═╡ d3a1c5e0-5b7e-4c2a-9f1e-0a6b2c4d8e01
+WideCell(md"""
+##### Spatial scheme
+`fft`: spectral derivatives and an exact Fourier solve of the force balance (CUDA and CPU; the
+choice for large runs on the cluster). `jacobi`: finite differences and a Jacobi iteration; needs
+no FFT, so it also runs on Apple GPUs (Metal); suited to small runs.
+
+solver: $(@bind solver Select(ENUM_SOLVER, default="fft"))
+
+*Jacobi options (ignored by `fft`):*
+first convergence check `cce_base` = $(@bind cce_base_str TextField((6,1),default="10")),
+largest check interval `cce_cap` = $(@bind cce_cap_str TextField((6,1),default="100")),
+max sweeps = $(@bind max_iter_str TextField((8,1),default="100000")),
+tolerance = $(@bind error_threshold_str TextField((8,1),default="1e-6"))
+""")
+
+# ╔═╡ d3a1c5e0-5b7e-4c2a-9f1e-0a6b2c4d8e02
+begin
+	listtab_solver = [ [solver],
+		Int.(UI_utils.parse_values(cce_base_str)),
+		Int.(UI_utils.parse_values(cce_cap_str)),
+		Int.(UI_utils.parse_values(max_iter_str)),
+		Number.(UI_utils.parse_values(error_threshold_str)) ]
+	listname_solver = ["solver","cce_base","cce_cap","max_iter","error_threshold"]
+	UI_utils.print_list(listname_solver, listtab_solver)
+end |> WideCell
+
 # ╔═╡ 2bc2c9d4-7381-4d89-8b9d-8546e73d8354
 WideCell(
     begin
-        listtab = vcat(listtab1, listtab2, listtab_rho, listtab_p, listtab_q, listtab_pq)
-        listname = vcat(listname1, listname2, listname_rho, listname_p, listname_q, listname_pq)
+        listtab = vcat(listtab1, listtab2, listtab_rho, listtab_p, listtab_q, listtab_pq, listtab_solver)
+        listname = vcat(listname1, listname2, listname_rho, listname_p, listname_q, listname_pq, listname_solver)
         any(isempty, listtab)
         df = DF_utils.generate_dataframe(listname, listtab)
         # remove value of P parameters and loop if no P:
@@ -318,6 +346,8 @@ WideCell(
         df[map(x->!x, contains.(df.orientation, "polar")),  vcat(listname_p, listname_pq, ["eta_p"])] .= 0.0
         df[map(x->!x, contains.(df.orientation, "nemat")),  vcat(listname_q, listname_pq, ["eta_q"])] .= 0.0
         df[(map(x->!x, contains.(df.orientation, "nematopolar")) .& contains.(df.initialisation, "Loop")),  :initialisation] .= "Homogeneous"
+        # Polarized needs an orientation field (main.jl stops with an error otherwise)
+        df[(df.orientation .== "none") .& (df.initialisation .== "Polarized"), :initialisation] .= "Homogeneous"
         unique!(df)
         Nsim = isempty(df) ? 0 : nrow(df)
         DataFrames.insertcols!(df, 1, :fn => string.(1:Nsim))
@@ -906,6 +936,8 @@ version = "1.64.0+1"
 # ╟─4165eac0-7ad0-49d0-afb9-8c5c51c5652a
 # ╟─54c99ab3-99fc-46e1-8141-ef08b4f2ace6
 # ╟─531ef45f-800a-4a5f-a05a-d47c6ec3e5f4
+# ╟─d3a1c5e0-5b7e-4c2a-9f1e-0a6b2c4d8e01
+# ╟─d3a1c5e0-5b7e-4c2a-9f1e-0a6b2c4d8e02
 # ╟─2bc2c9d4-7381-4d89-8b9d-8546e73d8354
 # ╟─b34e3630-8b7d-450f-9594-3474939a66bf
 # ╟─829af64f-7846-439f-86ba-7325ef189585

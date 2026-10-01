@@ -46,6 +46,28 @@ function get_trait(choice::Symbol)
     end
 end
 
+# ---------------------------------------------------------------------------
+# Spatial scheme / velocity solver. One switch (DF.csv column `solver`) selects how BOTH the
+# spatial derivatives and the force balance are computed. The scheme-specific code is in
+# operators.jl; its header explains how to add a new scheme (a type here + three methods there).
+# ---------------------------------------------------------------------------
+abstract type VelocitySolver end
+struct FFTSolver    <: VelocitySolver end   # spectral derivatives + exact Fourier velocity solve
+struct JacobiSolver <: VelocitySolver end   # finite differences + Jacobi iteration (no FFT → also Metal)
+
+# Does the scheme need the FFT plans (W, Wi) and the Fourier derivative factors?
+@inline is_spectral(::FFTSolver)      = true
+@inline is_spectral(::VelocitySolver) = false
+
+# DF.csv name → scheme. Registering a new scheme is one entry here.
+const SOLVERS = Dict(:fft => FFTSolver, :jacobi => JacobiSolver)
+
+function get_solver(choice::Symbol)
+    haskey(SOLVERS, choice) ||
+        error("Unknown solver: $choice. Available: $(join(sort(string.(keys(SOLVERS))), ", ")).")
+    return SOLVERS[choice]()
+end
+
 
 # abstract type Perturbation end
 # struct None   <: Perturbation end

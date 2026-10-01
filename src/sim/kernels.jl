@@ -126,7 +126,7 @@ end
     # Load local variable
     # # Density
     ρ      = ρ_[i,j];
-    ρ0_rec = 1.0/ρ0;
+    ρ0_rec = TF(1)/ρ0;
     ∂xρ  = ∇ρ[i,j,1];  ∂yρ  = ∇ρ[i,j,2];
 
     # # Polarity
@@ -148,8 +148,8 @@ end
     ∇QQ = 2*(∂xQ1^2+∂xQ2^2+∂yQ1^2+∂yQ2^2)
 
     # Compute chemical potential and molecular field
-    μ_ij = a*ρ^3 + ρ*(-1.5*ρ*ρ0_rec*αp*P2 + 0.5*βp*P4 + kp*∇P2
-                        -1.5*ρ*ρ0_rec*αQ*QQ +     βQ*Q4 + kQ*∇QQ
+    μ_ij = a*ρ^3 + ρ*(-TF(1.5)*ρ*ρ0_rec*αp*P2 + TF(0.5)*βp*P4 + kp*∇P2
+                        -TF(1.5)*ρ*ρ0_rec*αQ*QQ +     βQ*Q4 + kQ*∇QQ
                         +χ*(Q1*(Py*Py-Px*Px)-2*Q2*Px*Py) );
 
     # Molecular field for polar field
@@ -158,29 +158,29 @@ end
     save_field!(h, i, j, hx, hy)
     
     # Molecular filed for nematic field
-    H1 = -2*ρ^2*(2*βQ*QQ-αQ*ρ*ρ0_rec)*Q1 + 2*kQ*ΔQ1*ρ^2 + 4*kQ*ρ*(∂xρ*∂xQ1+∂yρ*∂yQ1) + ρ^2*χ*0.5*(Px^2-Py^2); 
+    H1 = -2*ρ^2*(2*βQ*QQ-αQ*ρ*ρ0_rec)*Q1 + 2*kQ*ΔQ1*ρ^2 + 4*kQ*ρ*(∂xρ*∂xQ1+∂yρ*∂yQ1) + ρ^2*χ*TF(0.5)*(Px^2-Py^2); 
     H2 = -2*ρ^2*(2*βQ*QQ-αQ*ρ*ρ0_rec)*Q2 + 2*kQ*ΔQ2*ρ^2 + 4*kQ*ρ*(∂xρ*∂xQ2+∂yρ*∂yQ2) + ρ^2*χ*Px*Py;           
     save_field!(H, i, j, H1, H2)
 
     # f - ρμ = -(Hydrostatic pressure)
-    f_ρμ = 0.25*a*ρ^4 + ρ^2*(-0.5*αp*ρ*ρ0_rec*P2 + 0.25*βp*P4 + 0.5*kp*∇P2 
-                                -0.5*αQ*ρ*ρ0_rec*QQ +  0.5*βQ*Q4 + 0.5*kQ*∇QQ 
-                                +0.5*χ*(Q1*(Py*Py-Px*Px)-2*Q2*Px*Py)) -ρ*μ_ij;
+    f_ρμ = TF(0.25)*a*ρ^4 + ρ^2*(-TF(0.5)*αp*ρ*ρ0_rec*P2 + TF(0.25)*βp*P4 + TF(0.5)*kp*∇P2 
+                                -TF(0.5)*αQ*ρ*ρ0_rec*QQ +  TF(0.5)*βQ*Q4 + TF(0.5)*kQ*∇QQ 
+                                +TF(0.5)*χ*(Q1*(Py*Py-Px*Px)-2*Q2*Px*Py)) -ρ*μ_ij;
                         
     # Non-viscous stress tensor:
     # σ_nv = sym Ericksen + flow aligment + active + hydrostatic pressure + anti-sym part of Ericksen
-    σ_anti      = 0.5*(Px*hy-hx*Py) + 2*(Q1*H2-H1*Q2);
+    σ_anti      = TF(0.5)*(Px*hy-hx*Py) + 2*(Q1*H2-H1*Q2);
     # xx component of the non-viscous stress
     σ_nv[i,j,1] = f_ρμ + (- ρ^2*kp*(∂xPx^2+∂xPy^2)   + ν1*Px*hx + ν2*(Px*hx+Py*hy) 
                             - ρ^2*kQ*2*(∂xQ1^2+∂xQ2^2) + 2*λ*H1 
-                            - ζρ*ρ^3 - ρ*(ζp*(Px*Px-0.5*P2) + 0.5*ζp2*P2 + ζQ*Q1) );
+                            - ζρ*ρ^3 - ρ*(ζp*(Px*Px-TF(0.5)*P2) + TF(0.5)*ζp2*P2 + ζQ*Q1) );
     # yy component of the non-viscous stress
     σ_nv[i,j,4] = f_ρμ + (- ρ^2*kp*(∂yPx^2+∂yPy^2) + ν1*Py*hy + ν2*(Px*hx+Py*hy)
                             - ρ^2*kQ*2*(∂yQ1^2+∂yQ2^2) - 2*λ*H1
-                            - ζρ*ρ^3 - ρ*(ζp*(Py*Py-0.5*P2) + 0.5*ζp2*P2 - ζQ*Q1) );
+                            - ζρ*ρ^3 - ρ*(ζp*(Py*Py-TF(0.5)*P2) + TF(0.5)*ζp2*P2 - ζQ*Q1) );
     # Symmetric xy component of the non-viscous stress
     σ_symm      = (- ρ^2*(kp*(∂xPx*∂yPx+∂xPy*∂yPy) + 2*kQ*(∂xQ1*∂yQ1+∂xQ2*∂yQ2)) 
-                            + 0.5*ν1*(Px*hy+Py*hx) + 2*λ*H2 - ρ*(ζp*Px*Py + ζQ*Q2));
+                            + TF(0.5)*ν1*(Px*hy+Py*hx) + 2*λ*H2 - ρ*(ζp*Px*Py + ζQ*Q2));
     σ_nv[i,j,2] = σ_symm + σ_anti;
     σ_nv[i,j,3] = σ_symm - σ_anti;
 
@@ -220,9 +220,9 @@ end
     # Initialize velocity, shear rate and vorticity.
     Vx  = V[i,j,1]; Vy = V[i,j,2]
     Vxx = ∇V[i,j,1]
-    Vxy = 0.5*(∇V[i,j,2]+∇V[i,j,3])
+    Vxy = TF(0.5)*(∇V[i,j,2]+∇V[i,j,3])
     Vyy = ∇V[i,j,4]
-    ωxy = 0.5*(∇V[i,j,2]-∇V[i,j,3])
+    ωxy = TF(0.5)*(∇V[i,j,2]-∇V[i,j,3])
     ωyx = -ωxy
     # Initialize polar, nematic and molecular fields.
     # # Polarity
