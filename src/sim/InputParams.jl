@@ -32,6 +32,7 @@ else
 end
 @show TA
 @show @current_hardware
+include("setup_check.jl"); check_setup(file)   # versions, backend, GPU, commit -> setup.txt
 
 dir_df = @__DIR__
 df = CSV.read(joinpath(dir_df,"DF.csv"), DataFrame)[idx,:]
