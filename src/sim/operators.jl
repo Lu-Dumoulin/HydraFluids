@@ -13,7 +13,7 @@
 # ── Adding a scheme ──────────────────────────────────────────────────────────────────────────────
 #  1. utils.jl: define `struct MySolver <: VelocitySolver end`, add `:mysolver => MySolver` to
 #     SOLVERS, and set `is_spectral(::MySolver) = true` if it uses the FFT plans W, Wi.
-#  2. Here: implement the three methods below for ::MySolver. Each receives the device arrays plus
+#  2. Here: implement the four methods below for ::MySolver. Each receives the device arrays plus
 #     `w`, the work bundle built in main.jl (FFT plans/factors/buffers and real scratch arrays).
 #        compute_gradients!(::MySolver, ρ, ∇ρ, Δρ, P, ∇P, ΔP, Q, ∇Q, ΔQ, w)
 #            fill ∇ρ (…,2), Δρ, and when P/Q are not `nothing`: ∇P, ∇Q (…,4: ∂xF1,∂xF2,∂yF1,∂yF2)
@@ -24,6 +24,8 @@
 #            (a free initial guess for iterative schemes).
 #        density_advection!(::MySolver, ∂xρVx, ∂yρVy, ρ, V, w)
 #            fill the advective fluxes ∂x(ρVx) and ∂y(ρVy).
+#        laplacian!(::MySolver, Δf, f, w)
+#            fill Δf with the Laplacian of the scalar field f (used for Δμ, diffusion = mu).
 #  3. GenInputParams.pluto.jl: add its name to ENUM_SOLVER so it can be selected.
 #  Nothing in main.jl or kernels.jl changes. Check a new scheme against :fft on a short run.
 # ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -81,6 +83,12 @@ function solve_velocity!(::FFTSolver, V, ∇V, σ_nv, w)
     return nothing
 end
 
+function laplacian!(::FFTSolver, Δf, f, w)
+    mul!(w.F0, w.W, f)                                    # r2c leaves f untouched
+    _spec_deriv!(Δf, w.factor_Δ, w)
+    return nothing
+end
+
 function density_advection!(::FFTSolver, ∂xρVx, ∂yρVy, ρ, V, w)
     @views w.Rtmp .= ρ .* V[:, :, 1]; mul!(w.F0, w.W, w.Rtmp)
     w.Fa .= w.factor_∂x .* w.F0; mul!(∂xρVx, w.Wi, w.Fa)
@@ -103,6 +111,14 @@ const inv_diag = TF(1) / (ξ + TF(6) / Δ2)
     ∇f[i,j,1] = (f[ip,j] - f[i_,j]) * TF(0.5) / Δ
     ∇f[i,j,2] = (f[i,jp] - f[i,j_]) * TF(0.5) / Δ
     Δf[i,j]   = (f[ip,j] + f[i_,j] + f[i,jp] + f[i,j_] - TF(4)*f[i,j]) / Δ2
+    return nothing
+end
+
+# Laplacian only, for Δμ.
+@parallel_indices (i, j) function fd_lap_scalar!(Δf, f)
+    i_ = (i == 1) ? N : i-1;  ip = (i == N) ? 1 : i+1
+    j_ = (j == 1) ? N : j-1;  jp = (j == N) ? 1 : j+1
+    Δf[i,j] = (f[ip,j] + f[i_,j] + f[i,jp] + f[i,j_] - TF(4)*f[i,j]) / Δ2
     return nothing
 end
 
@@ -192,4 +208,22 @@ end
 function density_advection!(::JacobiSolver, ∂xρVx, ∂yρVy, ρ, V, w)
     @parallel blocks threads fd_density_advection!(∂xρVx, ∂yρVy, ρ, V)
     return nothing
+end
+
+function laplacian!(::JacobiSolver, Δf, f, w)
+    @parallel blocks threads fd_lap_scalar!(Δf, f)
+    return nothing
+end
+
+# ================================================================================================
+# Diffusion (Diffusion_trait, DF.csv column `diffusion`, see utils.jl): the field whose Laplacian
+# D multiplies in the density equation, ∂tρ = … + D Δ(field).
+#   fick: Δρ, already computed by compute_gradients!.
+#   mu:   Δμ, with μ stored by Compute_stress! (kernels.jl).
+# ================================================================================================
+diffusion_laplacian!(::FickDiffusion, solver, Δρ, Δμ, μ, w) = Δρ
+
+function diffusion_laplacian!(::ChemicalDiffusion, solver, Δρ, Δμ, μ, w)
+    laplacian!(solver, Δμ, μ, w)
+    return Δμ
 end

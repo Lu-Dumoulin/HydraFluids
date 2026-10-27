@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.28
+# v1.0.4
 
 using Markdown
 using InteractiveUtils
@@ -45,6 +45,7 @@ begin
 	const ENUM_ORI    = ["none", "nematic", "polar", "nematopolar"];
 	const ENUM_INI   = ["Homogeneous", "Polarized", "Loop"];
 	const ENUM_SOLVER = ["fft", "jacobi"];   # spatial schemes registered in sim/utils.jl (SOLVERS)
+	const ENUM_DIFF   = ["fick", "mu"];      # diffusion laws registered in sim/utils.jl (DIFFUSIONS)
 
 	TableOfContents()
 end |> WideCell
@@ -64,13 +65,15 @@ if pull_commonui
     if !isdir(common_path)
         run(`git clone https://github.com/Lu-Dumoulin/CommonUI.git $(common_path)`)
     else
-        rm(common_path, recursive=true)
-        sleep(0.2)
-        run(`git clone https://github.com/Lu-Dumoulin/CommonUI.git $(common_path)`)
+        # Pluto rewrites the notebooks it runs: set local changes aside (recoverable with
+        # `git -C src/CommonUI stash list` / `stash pop`) so that the pull can go through.
+        if !isempty(readchomp(`git -C $(common_path) status --porcelain`))
+            run(`git -C $(common_path) stash push -m "local changes before pull"`)
+            @warn "Local changes in CommonUI were stashed (see: git -C src/CommonUI stash list)."
+        end
+        run(`git -C $(common_path) pull --ff-only`)
+        println("✓ Common UI up to date")
     end
-    #     run(`git -C $(common_path) pull`)
-    #     println("✓ Common UI up to date")
-    # end
 
 end
 
@@ -179,9 +182,9 @@ Free energy:
     
 ``a`` = $(@bind a_str TextField(default="1"))
     
-Isotropic active stress:
+Isotropic active stress (``\zeta < 0`` is contractile):
 ``
-\sigma^{\text{act},\rho}_{\alpha\beta} = \zeta\Delta\mu \rho^3\delta_{\alpha\beta}
+\sigma^{\text{act},\rho}_{\alpha\beta} = -\zeta\Delta\mu \rho^3\delta_{\alpha\beta}
 ``
     
  ``\zeta`` = $(@bind zeta_str TextField((8,1),default="0.8")) 
@@ -190,8 +193,10 @@ Isotropic active stress:
 md"""
 Continuity equation: 
 ```math
-\partial_t \rho = - \partial_\beta ( v_\beta \rho - D \partial_{\beta} {\rho} ) + \tau^{-1}(\rho_0 - \rho)
+\partial_t \rho = - \partial_\beta ( v_\beta \rho + j_\beta ) + \tau^{-1}(\rho_0 - \rho)
 ```
+Diffusive current: $(@bind diffusion Select(ENUM_DIFF, default="fick")) — `fick`: ``j_\beta = -D\,\partial_\beta\rho``; `mu`: ``j_\beta = -D\,\partial_\beta\mu`` with ``\mu = \delta\mathcal{F}/\delta\rho`` (``D`` is then a mobility).
+
 Diffusion coefficient: ``D`` = $(@bind D_str TextField((15,1),default="0.0001")) 
 
 Renewal time: ``\tau`` = $(@bind tau_str TextField((25,1),default="1")) 
@@ -202,7 +207,8 @@ Target density: ``\rho_0`` = $(@bind rho0_str TextField((25,1),default="0.4:0.05
 # ╔═╡ eca8b556-c151-46e3-853c-ba9a012e0e44
 begin
 	listtab_rho, listname_rho = UI_utils.@named_parse [a_str, zeta_str, D_str, tau_str, rho0_str]
-	UI_utils.print_list(listname_rho, listtab_rho)
+	listtab_diff, listname_diff = [[diffusion]], ["diffusion"]
+	UI_utils.print_list(vcat(listname_rho, listname_diff), vcat(listtab_rho, listtab_diff))
 end |> WideCell
 
 # ╔═╡ b854b1b1-586b-461a-b69e-d5625c779389
@@ -221,14 +227,14 @@ Free energy:
 ``\kappa_p`` = $(@bind kappa_p_str TextField((8,1), default="0.0001"))
 	
 Active polar stress: 
-	``\sigma^{\text{act},p}_{\alpha\beta} = \rho\zeta_p\Delta\mu p_\alpha p_\beta + \rho\tilde\zeta_p\Delta\mu p_\gamma p_\gamma \delta_{\alpha\beta}``
+	``\sigma^{\text{act},p}_{\alpha\beta} = -\rho\zeta_p\Delta\mu \left(p_\alpha p_\beta - \frac{1}{2}p_\gamma p_\gamma\delta_{\alpha\beta}\right) - \frac{1}{2}\rho\tilde\zeta_p\Delta\mu p_\gamma p_\gamma \delta_{\alpha\beta}``
 
 ``\zeta_p`` = $(@bind zeta_p_str TextField((8,1),default="0.0")) , ``\tilde\zeta_p`` = $(@bind zeta_p2_str TextField((8,1),default="0.0")) 
 """,
 md"""
 Continuity equation:
 ```math
-\partial_t p_\alpha = - v_\gamma \partial_\gamma p_\alpha - \Omega_{\alpha\gamma} p_{\gamma} + \Gamma_p^{-1} h_\alpha -  \nu  p_\beta v_{\alpha\beta} - \bar{\nu} p_\alpha  v_{\gamma\gamma} + \varepsilon_p\Delta\mu
+\partial_t p_\alpha = - v_\gamma \partial_\gamma p_\alpha - \Omega_{\alpha\gamma} p_{\gamma} + \Gamma_p^{-1} h_\alpha -  \nu  p_\beta v_{\alpha\beta} - \bar{\nu} p_\alpha  v_{\gamma\gamma} + \varepsilon_p\Delta\mu\,\rho\, p_\alpha
 ```
 Rotational viscosity: ``\Gamma_p`` = $(@bind gamma_p_str TextField((25,1),default="1.0"))
 	
@@ -264,15 +270,15 @@ Free energy:
 ``\kappa_Q`` = $(@bind kappa_q_str TextField((5,1), default="0.0001"))
 
 Active nematic stress: 
-	``\sigma^{\text{act},Q}_{\alpha\beta} = \rho\zeta_Q\Delta\mu Q_{\alpha\beta}``
+	``\sigma^{\text{act},Q}_{\alpha\beta} = -\rho\zeta_Q\Delta\mu Q_{\alpha\beta}``
 
 ``\zeta_Q`` = $(@bind zeta_q_str TextField((8,1),default="0.0"))
 """,
 md"""
 ```math
-\partial_t Q_{\alpha\beta} = - v_\gamma \partial_\gamma Q_{\alpha\beta} - \Omega_{\alpha\gamma} Q_{\gamma\beta} + \Gamma_Q^{-1} H_{\alpha\beta} - 2 \lambda \left( v_{\alpha\beta} - \frac{1}{2}  v_{\gamma\gamma} \right)
+\partial_t Q_{\alpha\beta} = - v_\gamma \partial_\gamma Q_{\alpha\beta} - \Omega_{\alpha\gamma} Q_{\gamma\beta} - \Omega_{\beta\gamma} Q_{\gamma\alpha} + \Gamma_Q^{-1} \mathsf{H}_{\alpha\beta} - 2 \lambda \left( v_{\alpha\beta} - \frac{1}{2}  v_{\gamma\gamma}\delta_{\alpha\beta} \right)
 ```
-``\quad\quad\quad\quad + \varepsilon_Q\Delta\mu ``
+``\quad\quad\quad\quad + \varepsilon_Q\Delta\mu\,\rho\, Q_{\alpha\beta}``, with the tensor molecular field ``\mathsf{H}_{\alpha\beta} = -\delta\mathcal{F}/\delta Q_{\alpha\beta}`` (traceless part)
 	
 Rotational viscosity: ``\Gamma_Q`` = $(@bind gamma_q_str TextField((25,1),default="1.0"))
 	
@@ -340,8 +346,8 @@ end |> WideCell
 # ╔═╡ 2bc2c9d4-7381-4d89-8b9d-8546e73d8354
 WideCell(
     begin
-        listtab = vcat(listtab1, listtab2, listtab_rho, listtab_p, listtab_q, listtab_pq, listtab_solver)
-        listname = vcat(listname1, listname2, listname_rho, listname_p, listname_q, listname_pq, listname_solver)
+        listtab = vcat(listtab1, listtab2, listtab_rho, listtab_diff, listtab_p, listtab_q, listtab_pq, listtab_solver)
+        listname = vcat(listname1, listname2, listname_rho, listname_diff, listname_p, listname_q, listname_pq, listname_solver)
         any(isempty, listtab)
         df = DF_utils.generate_dataframe(listname, listtab)
         # remove value of P parameters and loop if no P:
@@ -421,12 +427,13 @@ PlutoUI = "~0.7.82"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.6"
-manifest_format = "2.0"
+julia_version = "1.13.3"
+manifest_format = "2.1"
 project_hash = "b3928f466c9a5862af449c1bb3e04fc6054cebe8"
 
 [[deps.AbstractPlutoDingetjes]]
 git-tree-sha1 = "6c3913f4e9bdf6ba3c08041a446fb1332716cbc2"
+registries = "General"
 uuid = "6e696c72-6542-2067-7265-42206c756150"
 version = "1.4.0"
 
@@ -445,18 +452,21 @@ version = "1.11.0"
 [[deps.CSV]]
 deps = ["CodecZlib", "Dates", "FilePathsBase", "InlineStrings", "Mmap", "Parsers", "PooledArrays", "PrecompileTools", "SentinelArrays", "Tables", "Unicode", "WeakRefStrings", "WorkerUtilities"]
 git-tree-sha1 = "8d8e0b0f350b8e1c91420b5e64e5de774c2f0f4d"
+registries = "General"
 uuid = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 version = "0.10.16"
 
 [[deps.CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
 git-tree-sha1 = "962834c22b66e32aa10f7611c08c8ca4e20749a9"
+registries = "General"
 uuid = "944b1d66-785c-5afd-91f1-9de20f533193"
 version = "0.7.8"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
 git-tree-sha1 = "67e11ee83a43eb71ddc950302c53bf33f0690dfe"
+registries = "General"
 uuid = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
 version = "0.12.1"
 weakdeps = ["StyledStrings"]
@@ -467,6 +477,7 @@ weakdeps = ["StyledStrings"]
 [[deps.Compat]]
 deps = ["TOML", "UUIDs"]
 git-tree-sha1 = "9d8a54ce4b17aa5bdce0ea5c34bc5e7c340d16ad"
+registries = "General"
 uuid = "34da2185-b29b-5c13-b0c7-acf172513d20"
 version = "4.18.1"
 weakdeps = ["Dates", "LinearAlgebra"]
@@ -477,32 +488,37 @@ weakdeps = ["Dates", "LinearAlgebra"]
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
-version = "1.3.0+1"
+version = "1.5.5+2"
 
 [[deps.Crayons]]
 git-tree-sha1 = "249fe38abf76d48563e2f4556bebd215aa317e15"
+registries = "General"
 uuid = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
 version = "4.1.1"
 
 [[deps.DataAPI]]
 git-tree-sha1 = "abe83f3a2f1b857aac70ef8b269080af17764bbe"
+registries = "General"
 uuid = "9a962f9c-6df0-11e9-0e5d-c546b8b5ee8a"
 version = "1.16.0"
 
 [[deps.DataFrames]]
 deps = ["Compat", "DataAPI", "DataStructures", "Future", "InlineStrings", "InvertedIndices", "IteratorInterfaceExtensions", "LinearAlgebra", "Markdown", "Missings", "PooledArrays", "PrecompileTools", "PrettyTables", "Printf", "Random", "Reexport", "SentinelArrays", "SortingAlgorithms", "Statistics", "TableTraits", "Tables", "Unicode"]
 git-tree-sha1 = "5fab31e2e01e70ad66e3e24c968c264d1cf166d6"
+registries = "General"
 uuid = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 version = "1.8.2"
 
 [[deps.DataStructures]]
 deps = ["OrderedCollections"]
 git-tree-sha1 = "e357641bb3e0638d353c4b29ea0e40ea644066a6"
+registries = "General"
 uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 version = "0.19.3"
 
 [[deps.DataValueInterfaces]]
 git-tree-sha1 = "bfc1187b79289637fa0ef6d4436ebdfe6905cbd6"
+registries = "General"
 uuid = "e2d170a0-9d28-54be-80f0-106bbe20a464"
 version = "1.0.0"
 
@@ -514,6 +530,7 @@ version = "1.11.0"
 [[deps.DelimitedFiles]]
 deps = ["Mmap"]
 git-tree-sha1 = "9e2f36d3c96a820c678f2f1f1782582fcf685bae"
+registries = "General"
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 version = "1.9.1"
 
@@ -525,6 +542,7 @@ version = "1.7.0"
 [[deps.FilePathsBase]]
 deps = ["Compat", "Dates"]
 git-tree-sha1 = "3bab2c5aa25e7840a4b065805c0cdfc01f3068d2"
+registries = "General"
 uuid = "48062228-2e41-5def-b9a4-89aafe57970f"
 version = "0.9.24"
 weakdeps = ["Mmap", "Test"]
@@ -540,11 +558,13 @@ version = "1.11.0"
 [[deps.FixedPointNumbers]]
 deps = ["Statistics"]
 git-tree-sha1 = "05882d6995ae5c12bb5f36dd2ed3f61c98cbb172"
+registries = "General"
 uuid = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
 version = "0.8.5"
 
 [[deps.Format]]
 git-tree-sha1 = "9c68794ef81b08086aeb32eeaf33531668d5f5fc"
+registries = "General"
 uuid = "1fa38f19-a742-5d3f-a2b9-30dd87b9d5f8"
 version = "1.3.7"
 
@@ -556,29 +576,34 @@ version = "1.11.0"
 [[deps.Ghostscript_jll]]
 deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Zlib_jll"]
 git-tree-sha1 = "38044a04637976140074d0b0621c1edf0eb531fd"
+registries = "General"
 uuid = "61579ee1-b43e-5ca0-a5da-69d92c66a64b"
 version = "9.55.1+0"
 
 [[deps.Hyperscript]]
 deps = ["Test"]
 git-tree-sha1 = "179267cfa5e712760cd43dcae385d7ea90cc25a4"
+registries = "General"
 uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
 version = "0.0.5"
 
 [[deps.HypertextLiteral]]
 deps = ["Tricks"]
 git-tree-sha1 = "d1a86724f81bcd184a38fd284ce183ec067d71a0"
+registries = "General"
 uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
 version = "1.0.0"
 
 [[deps.IOCapture]]
 deps = ["Logging", "Random"]
 git-tree-sha1 = "0ee181ec08df7d7c911901ea38baf16f755114dc"
+registries = "General"
 uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
 version = "1.0.0"
 
 [[deps.InlineStrings]]
 git-tree-sha1 = "8f3d257792a522b4601c24a577954b0a8cd7334d"
+registries = "General"
 uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
 version = "1.4.5"
 
@@ -597,23 +622,27 @@ version = "1.11.0"
 
 [[deps.InvertedIndices]]
 git-tree-sha1 = "6da3c4316095de0f5ee2ebd875df8721e7e0bdbe"
+registries = "General"
 uuid = "41ab1584-1d38-5bbf-9106-f11c6c58b48f"
 version = "1.3.1"
 
 [[deps.IteratorInterfaceExtensions]]
 git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
+registries = "General"
 uuid = "82899510-4779-5014-852e-03e436cf321d"
 version = "1.0.0"
 
 [[deps.JLLWrappers]]
 deps = ["Artifacts", "Preferences"]
 git-tree-sha1 = "7204148362dafe5fe6a273f855b8ccbe4df8173e"
+registries = "General"
 uuid = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
 version = "1.8.0"
 
 [[deps.JpegTurbo_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "c0c9b76f3520863909825cbecdef58cd63de705a"
+registries = "General"
 uuid = "aacddb02-875f-59d6-b918-886e6ef4fbf8"
 version = "3.1.5+0"
 
@@ -624,12 +653,14 @@ version = "1.12.0"
 
 [[deps.LaTeXStrings]]
 git-tree-sha1 = "dda21b8cbd6a6c40d9d02a73230f9d70fed6918c"
+registries = "General"
 uuid = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 version = "1.4.0"
 
 [[deps.Latexify]]
 deps = ["Format", "Ghostscript_jll", "InteractiveUtils", "LaTeXStrings", "MacroTools", "Markdown", "OrderedCollections", "Requires"]
 git-tree-sha1 = "44f93c47f9cd6c7e431f2f2091fcba8f01cd7e8f"
+registries = "General"
 uuid = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
 version = "0.16.10"
 
@@ -648,17 +679,17 @@ version = "0.16.10"
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
 uuid = "b27032c2-a3e7-50c8-80cd-2d36dbcbfd21"
-version = "0.6.4"
+version = "1.0.0"
 
 [[deps.LibCURL_jll]]
-deps = ["Artifacts", "LibSSH2_jll", "Libdl", "OpenSSL_jll", "Zlib_jll", "nghttp2_jll"]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "LibSSH2_jll", "Libdl", "OpenSSL_jll", "Zlib_jll", "Zstd_jll", "nghttp2_jll"]
 uuid = "deac9b47-8bc7-5906-a0fe-35ac56dc84c0"
-version = "8.15.0+0"
+version = "8.22.0+0"
 
 [[deps.LibSSH2_jll]]
-deps = ["Artifacts", "Libdl", "OpenSSL_jll"]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl", "OpenSSL_jll", "Zlib_jll"]
 uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
-version = "1.11.3+1"
+version = "1.11.104+0"
 
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -667,7 +698,7 @@ version = "1.11.0"
 [[deps.LinearAlgebra]]
 deps = ["Libdl", "OpenBLAS_jll", "libblastrampoline_jll"]
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-version = "1.12.0"
+version = "1.13.0"
 
 [[deps.Logging]]
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -675,11 +706,13 @@ version = "1.11.0"
 
 [[deps.MIMEs]]
 git-tree-sha1 = "c64d943587f7187e751162b3b84445bbbd79f691"
+registries = "General"
 uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
 version = "1.1.0"
 
 [[deps.MacroTools]]
 git-tree-sha1 = "1e0228a030642014fe5cfe68c2c0a818f9e3f522"
+registries = "General"
 uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 version = "0.5.16"
 
@@ -691,6 +724,7 @@ version = "1.11.0"
 [[deps.Missings]]
 deps = ["DataAPI"]
 git-tree-sha1 = "ec4f7fbeab05d7747bdf98eb74d130a2a2ed298d"
+registries = "General"
 uuid = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
 version = "1.2.0"
 
@@ -700,7 +734,7 @@ version = "1.11.0"
 
 [[deps.MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
-version = "2025.11.4"
+version = "2026.10.20"
 
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
@@ -709,57 +743,65 @@ version = "1.3.0"
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
-version = "0.3.29+0"
+version = "0.3.30+0"
 
 [[deps.OpenSSL_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
-version = "3.5.4+0"
+version = "3.5.8+0"
 
 [[deps.OrderedCollections]]
 git-tree-sha1 = "05868e21324cede2207c6f0f466b4bfef6d5e7ee"
+registries = "General"
 uuid = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
 version = "1.8.1"
 
 [[deps.Parsers]]
 deps = ["Dates", "PrecompileTools", "UUIDs"]
 git-tree-sha1 = "5d5e0a78e971354b1c7bff0655d11fdc1b0e12c8"
+registries = "General"
 uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 version = "2.8.4"
 
 [[deps.PlutoTeachingTools]]
 deps = ["Downloads", "HypertextLiteral", "Latexify", "Markdown", "PlutoUI"]
 git-tree-sha1 = "90b41ced6bacd8c01bd05da8aed35c5458891749"
+registries = "General"
 uuid = "661c6b06-c737-4d37-b85c-46df65de6f69"
 version = "0.4.7"
 
 [[deps.PlutoUI]]
 deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "Downloads", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
 git-tree-sha1 = "0ecd70a51c13e150266e76a865f10a64a7f178a3"
+registries = "General"
 uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 version = "0.7.82"
 
 [[deps.PooledArrays]]
 deps = ["DataAPI", "Future"]
 git-tree-sha1 = "36d8b4b899628fb92c2749eb488d884a926614d3"
+registries = "General"
 uuid = "2dfb63ee-cc39-5dd5-95bd-886bf059d720"
 version = "1.4.3"
 
 [[deps.PrecompileTools]]
 deps = ["Preferences"]
 git-tree-sha1 = "edbeefc7a4889f528644251bdb5fc9ab5348bc2c"
+registries = "General"
 uuid = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 version = "1.3.4"
 
 [[deps.Preferences]]
 deps = ["TOML"]
 git-tree-sha1 = "8b770b60760d4451834fe79dd483e318eee709c4"
+registries = "General"
 uuid = "21216c6a-2e73-6563-6e65-726566657250"
 version = "1.5.2"
 
 [[deps.PrettyTables]]
 deps = ["Crayons", "LaTeXStrings", "Markdown", "PrecompileTools", "Printf", "REPL", "Reexport", "StringManipulation", "Tables"]
 git-tree-sha1 = "624de6279ab7d94fc9f672f0068107eb6619732c"
+registries = "General"
 uuid = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 version = "3.3.2"
 
@@ -775,7 +817,7 @@ uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 version = "1.11.0"
 
 [[deps.REPL]]
-deps = ["InteractiveUtils", "JuliaSyntaxHighlighting", "Markdown", "Sockets", "StyledStrings", "Unicode"]
+deps = ["Base64", "Dates", "FileWatching", "InteractiveUtils", "JuliaSyntaxHighlighting", "Markdown", "Sockets", "StyledStrings", "Unicode"]
 uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 version = "1.11.0"
 
@@ -786,22 +828,25 @@ version = "1.11.0"
 
 [[deps.Reexport]]
 git-tree-sha1 = "45e428421666073eab6f2da5c9d310d99bb12f9b"
+registries = "General"
 uuid = "189a3867-3050-52da-a836-e630ba90ab69"
 version = "1.2.2"
 
 [[deps.Requires]]
 deps = ["UUIDs"]
 git-tree-sha1 = "62389eeff14780bfe55195b7204c0d8738436d64"
+registries = "General"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "1.3.1"
 
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
-version = "0.7.0"
+version = "1.0.0"
 
 [[deps.SentinelArrays]]
 deps = ["Dates", "Random"]
 git-tree-sha1 = "084c47c7c5ce5cfecefa0a98dff69eb3646b5a80"
+registries = "General"
 uuid = "91c51154-3ec4-41a3-a24f-3f23e20d615c"
 version = "1.4.10"
 
@@ -816,12 +861,14 @@ version = "1.11.0"
 [[deps.SortingAlgorithms]]
 deps = ["DataStructures"]
 git-tree-sha1 = "64d974c2e6fdf07f8155b5b2ca2ffa9069b608d9"
+registries = "General"
 uuid = "a2af1166-a08f-5f64-846c-94a0d3cef48c"
 version = "1.2.2"
 
 [[deps.Statistics]]
 deps = ["LinearAlgebra"]
 git-tree-sha1 = "ae3bb1eb3bba077cd276bc5cfc337cc65c3075c0"
+registries = "General"
 uuid = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 version = "1.11.1"
 
@@ -834,6 +881,7 @@ version = "1.11.1"
 [[deps.StringManipulation]]
 deps = ["PrecompileTools"]
 git-tree-sha1 = "d05693d339e37d6ab134c5ab53c29fce5ee5d7d5"
+registries = "General"
 uuid = "892a3eda-7b42-436c-8928-eab12a02cf0e"
 version = "0.4.4"
 
@@ -849,12 +897,14 @@ version = "1.0.3"
 [[deps.TableTraits]]
 deps = ["IteratorInterfaceExtensions"]
 git-tree-sha1 = "c06b2f539df1c6efa794486abfb6ed2022561a39"
+registries = "General"
 uuid = "3783bdb8-4a98-5b6b-af9a-565f29a5fe9c"
 version = "1.0.1"
 
 [[deps.Tables]]
 deps = ["DataAPI", "DataValueInterfaces", "IteratorInterfaceExtensions", "OrderedCollections", "TableTraits"]
 git-tree-sha1 = "f2c1efbc8f3a609aadf318094f8fc5204bdaf344"
+registries = "General"
 uuid = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
 version = "1.12.1"
 
@@ -865,16 +915,19 @@ version = "1.11.0"
 
 [[deps.TranscodingStreams]]
 git-tree-sha1 = "0c45878dcfdcfa8480052b6ab162cdd138781742"
+registries = "General"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 version = "0.11.3"
 
 [[deps.Tricks]]
 git-tree-sha1 = "311349fd1c93a31f783f977a71e8b062a57d4101"
+registries = "General"
 uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
 version = "0.1.13"
 
 [[deps.URIs]]
 git-tree-sha1 = "bef26fb046d031353ef97a82e3fdb6afe7f21b1a"
+registries = "General"
 uuid = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
 version = "1.6.1"
 
@@ -890,18 +943,25 @@ version = "1.11.0"
 [[deps.WeakRefStrings]]
 deps = ["DataAPI", "InlineStrings", "Parsers"]
 git-tree-sha1 = "0716e01c3b40413de5dedbc9c5c69f27cddfddfc"
+registries = "General"
 uuid = "ea10d353-3f73-51f8-a26c-33c1cb351aa5"
 version = "1.4.3"
 
 [[deps.WorkerUtilities]]
 git-tree-sha1 = "cd1659ba0d57b71a464a29e64dbc67cfe83d54e7"
+registries = "General"
 uuid = "76eceee3-57b5-4d4a-8e66-0e911cebbf60"
 version = "1.6.1"
 
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
-version = "1.3.1+2"
+version = "1.3.2+0"
+
+[[deps.Zstd_jll]]
+deps = ["CompilerSupportLibraries_jll", "Libdl"]
+uuid = "3161d3a3-bdf6-5164-811a-617609db77b4"
+version = "1.5.7+1"
 
 [[deps.libblastrampoline_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -909,9 +969,13 @@ uuid = "8e850b90-86db-534c-a0d3-1478176c7d93"
 version = "5.15.0+0"
 
 [[deps.nghttp2_jll]]
-deps = ["Artifacts", "Libdl"]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "8e850ede-7688-5339-a07c-302acd2aaf8d"
-version = "1.64.0+1"
+version = "1.70.0+0"
+
+[registries.General]
+url = "https://github.com/JuliaRegistries/General.git"
+uuid = "23338594-aafe-5451-b93e-139f81909106"
 """
 
 # ╔═╡ Cell order:

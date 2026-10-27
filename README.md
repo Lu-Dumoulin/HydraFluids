@@ -101,7 +101,7 @@ All parameters are set in `GenInputParams.pluto.jl` and stored as columns in `DF
 | `max_iter`, `error_threshold` | `jacobi` only: sweep limit and tolerance on the change between sweeps (defaults 10⁵, 10⁻⁶) |
 | `gc_every` | Partial garbage collection every `gc_every` time steps (default 20, `0` = off). Keeps memory bounded under a cluster memory limit; no measurable cost and no effect on results. |
 
-Columns added after a table was generated are optional: an older `DF.csv` without `solver` runs with `fft`.
+Columns added after a table was generated are optional: an older `DF.csv` without `solver` runs with `fft`, and one without `diffusion` with `fick`.
 
 ### Initialization
 
@@ -120,7 +120,8 @@ Columns added after a table was generated are optional: an older `DF.csv` withou
 |---|---|
 | `a` | Steric free energy coefficient |
 | `zeta` | Isotropic active stress: $\sigma \ni -\zeta\,\rho^3\,\delta$, so `zeta < 0` is **contractile**. This is the opposite sign to the solver of arXiv:2506.03795, where $\zeta_\rho' > 0$ is contractile (its $\zeta_\rho' = 4$ is `zeta = -4` here, with `a` $= 4|\zeta_\rho'|/3$). |
-| `D` | Diffusion coefficient |
+| `diffusion` | Diffusive current: `fick` (default), $\mathbf{j} = -D\nabla\rho$, or `mu`, $\mathbf{j} = -D\nabla\mu$ with $\mu = \delta\mathcal{F}/\delta\rho$. With `mu`, the passive dynamics is a gradient flow of the free energy. |
+| `D` | Diffusion coefficient (`fick`) or mobility (`mu`) |
 | `tau` | Renewal time $\tau$ |
 | `rho0` | Target density $\rho_0$ |
 
@@ -130,7 +131,7 @@ Columns added after a table was generated are optional: an older `DF.csv` withou
 |---|---|
 | `alpha_p`, `beta_p`, `kappa_p` | Free energy: $\alpha_p$, $\beta_p$, $\kappa_p$ |
 | `zeta_p`, `zeta_p2` | Active polar stress coefficients |
-| `gamma_p` | Rotational viscosity $\Gamma_p$ |
+| `gamma_p` | Rotational viscosity $\Gamma_p$: $\partial_t\mathbf{p} \ni \mathbf{h}/\Gamma_p$ |
 | `nu`, `nu2` | Flow alignment $\nu$, $\bar\nu$ |
 | `epsi_p` | Active extensile term $\varepsilon_p$ |
 
@@ -140,9 +141,11 @@ Columns added after a table was generated are optional: an older `DF.csv` withou
 |---|---|
 | `alpha_q`, `beta_q`, `kappa_q` | Free energy: $\alpha_Q$, $\beta_Q$, $\kappa_Q$ |
 | `zeta_q` | Active nematic stress $\zeta_Q$ |
-| `gamma_q` | Rotational viscosity $\Gamma_Q$ |
+| `gamma_q` | Rotational viscosity $\Gamma_Q$: $\partial_t\mathsf{Q} \ni \mathsf{H}/\Gamma_Q$ |
 | `lambda` | Flow alignment $\lambda$ |
 | `epsi_q` | Active extensile term $\varepsilon_Q$ |
+
+$\mathsf{H}_{\alpha\beta} = -\delta\mathcal{F}/\delta Q_{\alpha\beta}$ is the tensor molecular field. The code stores the fields conjugate to the components $Q_1 = Q_{xx}$ and $Q_2 = Q_{xy}$, $H_i = -\delta\mathcal{F}/\delta Q_i$, which are twice the tensor components ($H_1 = 2\mathsf{H}_{xx}$, $H_2 = 2\mathsf{H}_{xy}$). Accordingly, $\partial_t Q_i \ni H_i/(2\Gamma_Q)$, the antisymmetric stress is $\sigma^\mathrm{a}_{xy} = \tfrac12(p_xh_y - p_yh_x) + (Q_1H_2 - Q_2H_1)$, and the flow-alignment stress is $2\lambda\mathsf{H}_{\alpha\beta}$. The kernels multiply by $1/\Gamma_p$ and $1/\Gamma_Q$, computed once. Versions before this convention (up to commit `3d98bf7`) had the nematic antisymmetric and flow-alignment stresses twice too large, relaxed $\mathsf{Q}$ with `gamma_p`, and did not use `gamma_q`: nematic and nematopolar results differ from them.
 
 ### Nematopolar coupling
 
@@ -165,11 +168,12 @@ The domain is an $N\times N$ periodic grid with spacing `dx`. The column `solver
 - **Failures** — if the fields or the time step become NaN, the run stops with an error message and a non-zero exit status, so Slurm marks the job as failed.
 - **Backends** — CUDA (NVIDIA), Metal (Apple Silicon) or CPU threads, from the `use_gpu` environment variable. CUDA and CPU run in `Float64`, Metal in `Float32`.
 - **No allocation in the time loop** — the FFT path reuses three buffers (one real, two complex) for every transform (`mul!` into a buffer instead of creating new arrays).
-- **Trait dispatch** — the orientation fields (`IsNone`, `IsPolar`, `IsNematic`, `IsNematoPolar`) and the scheme (`FFTSolver`, `JacobiSolver`) are resolved at compile time, so one kernel source compiles into fully specialised solvers.
+- **Trait dispatch** — the orientation fields (`IsNone`, `IsPolar`, `IsNematic`, `IsNematoPolar`), the scheme (`FFTSolver`, `JacobiSolver`) and the diffusion law (`FickDiffusion`, `ChemicalDiffusion`) are resolved at compile time, so one kernel source compiles into fully specialised solvers. With `diffusion = mu`, the chemical potential is stored by the stress kernel and its Laplacian computed by the selected scheme.
+- **Tests** — `julia test/smoke.jl` runs a tiny simulation on each available backend. `julia test/physics.jl` checks the physics on the CPU in about a minute: no bulk torque from the free energy, the energy balance $d\mathcal{F}/dt = -$dissipation over one step, a decreasing free energy over passive runs (`mu` and `fick`), and the relaxation rates $\rho_0^2\alpha_p/\Gamma_p$, $\rho_0^2\alpha_Q/\Gamma_Q$.
 
 **Accuracy of `jacobi`.** Its derivatives are second-order accurate (relative error ~ $(k\,\Delta x)^2$). The iteration stops when one sweep changes $\mathbf{V}$ by less than `error_threshold`; for smooth, slowly converging flows this leaves a few per cent of error at the default $10^{-6}$ (0.1 % at $10^{-8}$). A tighter tolerance cannot be reached in `Float32`, i.e. on Metal.
 
-**Adding a scheme.** Define a type and register it in `SOLVERS` (`src/sim/utils.jl`), implement three methods (`compute_gradients!`, `solve_velocity!`, `density_advection!`) in `src/sim/operators.jl`, and add its name to `ENUM_SOLVER` in `GenInputParams.pluto.jl`. The header of `operators.jl` describes what each method must fill. Nothing in `main.jl` or `kernels.jl` changes; check a new scheme against `fft` on a short run.
+**Adding a scheme.** Define a type and register it in `SOLVERS` (`src/sim/utils.jl`), implement four methods (`compute_gradients!`, `solve_velocity!`, `density_advection!`, `laplacian!`) in `src/sim/operators.jl`, and add its name to `ENUM_SOLVER` in `GenInputParams.pluto.jl`. The header of `operators.jl` describes what each method must fill. Nothing in `main.jl` or `kernels.jl` changes; check a new scheme against `fft` on a short run.
 
 ---
 

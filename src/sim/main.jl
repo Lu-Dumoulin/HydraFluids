@@ -33,6 +33,10 @@ function main()
         σ_nv  = @zeros(N, N, 4)      # Non-viscous stress tensor: 1 → xx, 2 → xy, 3 → yx, 4 → yy
         h     = hasP ? @zeros(N, N, 2) : nothing      # Molecular field for polar field
         H     = hasQ ? @zeros(N, N, 2) : nothing      # Molecular field for nematic field
+        # Chemical potential and its Laplacian, only for diffusion = mu (j = -D∇μ)
+        hasμ  = uses_mu(Diffusion_trait)
+        μ     = hasμ ? @zeros(N, N) : nothing
+        Δμ    = hasμ ? @zeros(N, N) : nothing
         
         # Copy of device arrays on host.
         ρ_host  = zeros(TF, N, N)            # Copy of ρ on host
@@ -185,7 +189,9 @@ function main()
             # from the selected scheme (spectral or finite differences).
             compute_gradients!(Solver_trait, ρ, ∇ρ, Δρ, P, ∇P, ΔP, Q, ∇Q, ΔQ, work)
             # Compute chemical potential, molecular field, stress
-            @parallel blocks threads Compute_stress!(σ_nv, h, H, ρ, ∇ρ, P, ∇P, ΔP, Q, ∇Q, ΔQ)
+            @parallel blocks threads Compute_stress!(σ_nv, h, H, μ, ρ, ∇ρ, P, ∇P, ΔP, Q, ∇Q, ΔQ)
+            # Field whose Laplacian drives diffusion: Δρ (fick) or Δμ (mu)
+            ΔD = diffusion_laplacian!(Diffusion_trait, Solver_trait, Δρ, Δμ, μ, work)
 
             # 2/ Solve the force balance ξV − (∇²V + ∇(∇·V)) = ∇·σ for V and ∇V
             # (exactly in Fourier space for :fft, by Jacobi iteration for :jacobi).
@@ -213,7 +219,7 @@ function main()
             # Advective fluxes ∂x(ρVx), ∂y(ρVy) from the selected scheme
             density_advection!(Solver_trait, ∂xρVx, ∂yρVy, ρ, V, work)
             # Update the density fields.
-            @. ρ += Δt*(-∂xρVx  -∂yρVy  + D0*Δρ - Rd*(ρ-ρ0))
+            @. ρ += Δt*(-∂xρVx  -∂yρVy  + D0*ΔD - Rd*(ρ-ρ0))
             t += Δt
             nstep += 1
             gc_every > 0 && nstep % gc_every == 0 && GC.gc(false)   # bound memory (see InputParams.jl)

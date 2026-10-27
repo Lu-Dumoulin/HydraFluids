@@ -68,6 +68,27 @@ function get_solver(choice::Symbol)
     return SOLVERS[choice]()
 end
 
+# ---------------------------------------------------------------------------
+# Diffusion of the density (DF.csv column `diffusion`): the diffusive current is
+#   :fick  j = -D ∇ρ   (Fick's law),
+#   :mu    j = -D ∇μ   (driven by the chemical potential μ = δF/δρ, D is then a mobility).
+# :mu keeps the passive dynamics a gradient flow of the free energy; it needs μ on the grid.
+# ---------------------------------------------------------------------------
+abstract type DiffusionTrait end
+struct FickDiffusion     <: DiffusionTrait end
+struct ChemicalDiffusion <: DiffusionTrait end
+
+@inline uses_mu(::ChemicalDiffusion) = true
+@inline uses_mu(::DiffusionTrait)    = false
+
+const DIFFUSIONS = Dict(:fick => FickDiffusion, :mu => ChemicalDiffusion)
+
+function get_diffusion(choice::Symbol)
+    haskey(DIFFUSIONS, choice) ||
+        error("Unknown diffusion: $choice. Available: $(join(sort(string.(keys(DIFFUSIONS))), ", ")).")
+    return DIFFUSIONS[choice]()
+end
+
 
 # abstract type Perturbation end
 # struct None   <: Perturbation end

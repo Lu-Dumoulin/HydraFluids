@@ -103,7 +103,9 @@ blocks_FFT = (div(B,2)+1, B)
 
 # ------ System parameters ------ #
 @show const Rd::TF  = 1/TF(df[:tau])         # Renewal rate ( τ^{-1} )
-@show const D0::TF  = TF(df[:D])        # Diffusivity
+@show const D0::TF  = TF(df[:D])        # Diffusivity (fick) or mobility of ∇μ (mu)
+# Diffusive current: :fick, j = -D∇ρ (default, and for tables without the column) | :mu, j = -D∇μ
+@show const Diffusion_trait = get_diffusion(Symbol(_ip_get(:diffusion, "fick")))
 # Orientation Field(s)
 @show const Orientation_trait = get_trait(Symbol(df[:orientation]))
 # Free energy parameters
@@ -119,7 +121,14 @@ blocks_FFT = (div(B,2)+1, B)
 @show const ν1::TF = TF(df[:nu])           # Flow alignment for P
 @show const ν2::TF = TF(df[:nu2])           #
 @show const λ::TF  = TF(df[:lambda])           # Flow alignment for Q
-@show const Γ::TF  = TF(df[:gamma_p])           # Rotational viscosity for P, Q
+@show const Γp::TF = TF(df[:gamma_p])           # Rotational viscosity of P
+@show const ΓQ::TF = TF(df[:gamma_q])           # Rotational viscosity of Q
+# The kernels multiply the molecular fields by these inverses, so that no division is done at
+# every grid point. GenInputParams sets the columns of an absent field to 0: its inverse is 0.
+@show const inv_gammap::TF = Γp > 0 ? TF(1)/Γp : TF(0)
+@show const inv_gammaQ::TF = ΓQ > 0 ? TF(1)/ΓQ : TF(0)
+is_polar(Orientation_trait)   && Γp <= 0 && error("gamma_p = $Γp: the polar field needs gamma_p > 0.")
+is_nematic(Orientation_trait) && ΓQ <= 0 && error("gamma_q = $ΓQ: the nematic field needs gamma_q > 0.")
 @show const εp::TF = TF(df[:epsi_p])          # Active extensile term
 @show const εQ::TF = TF(df[:epsi_q])           # Active extensile term
 # Active stress

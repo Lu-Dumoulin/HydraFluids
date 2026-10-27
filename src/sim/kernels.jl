@@ -118,10 +118,16 @@ end
 end
 # If the array is Nothing, this function compiles into literally nothing!
 @inline save_field!(::Nothing, i, j, v1, v2) = nothing
+# Same for a scalar field (the chemical potential, stored only for diffusion = mu)
+@inline function save_scalar!(F, i, j, v)
+    F[i, j] = v
+    return nothing
+end
+@inline save_scalar!(::Nothing, i, j, v) = nothing
 
 
 # ------ DYNAMICS ------ #
-@parallel_indices (i, j) function Compute_stress!(σ_nv, h, H, ρ_, ∇ρ, P, ∇P, ΔP, Q, ∇Q, ΔQ)
+@parallel_indices (i, j) function Compute_stress!(σ_nv, h, H, μ, ρ_, ∇ρ, P, ∇P, ΔP, Q, ∇Q, ΔQ)
 
     # Load local variable
     # # Density
@@ -151,13 +157,15 @@ end
     μ_ij = a*ρ^3 + ρ*(-TF(1.5)*ρ*ρ0_rec*αp*P2 + TF(0.5)*βp*P4 + kp*∇P2
                         -TF(1.5)*ρ*ρ0_rec*αQ*QQ +     βQ*Q4 + kQ*∇QQ
                         +χ*(Q1*(Py*Py-Px*Px)-2*Q2*Px*Py) );
+    save_scalar!(μ, i, j, μ_ij)    # only for diffusion = mu (μ is nothing otherwise)
 
     # Molecular field for polar field
     hx = -ρ^2*(βp*P2-αp*ρ*ρ0_rec)*Px + kp*ΔPx*ρ^2 + 2*kp*ρ*(∂xρ*∂xPx+∂yρ*∂yPx) + ρ^2*χ*(Q2*Py+Q1*Px);
     hy = -ρ^2*(βp*P2-αp*ρ*ρ0_rec)*Py + kp*ΔPy*ρ^2 + 2*kp*ρ*(∂xρ*∂xPy+∂yρ*∂yPy) + ρ^2*χ*(Q2*Px-Q1*Py); 
     save_field!(h, i, j, hx, hy)
     
-    # Molecular filed for nematic field
+    # Molecular field for the nematic field, with respect to the components: H1 = -δF/δQ1, H2 = -δF/δQ2.
+    # Since Q1 = Qxx = -Qyy, these are twice the tensor field: H1 = 2 Hxx, H2 = 2 Hxy (Hαβ = -δF/δQαβ).
     H1 = -2*ρ^2*(2*βQ*QQ-αQ*ρ*ρ0_rec)*Q1 + 2*kQ*ΔQ1*ρ^2 + 4*kQ*ρ*(∂xρ*∂xQ1+∂yρ*∂yQ1) + ρ^2*χ*TF(0.5)*(Px^2-Py^2); 
     H2 = -2*ρ^2*(2*βQ*QQ-αQ*ρ*ρ0_rec)*Q2 + 2*kQ*ΔQ2*ρ^2 + 4*kQ*ρ*(∂xρ*∂xQ2+∂yρ*∂yQ2) + ρ^2*χ*Px*Py;           
     save_field!(H, i, j, H1, H2)
@@ -169,18 +177,22 @@ end
                         
     # Non-viscous stress tensor:
     # σ_nv = sym Ericksen + flow aligment + active + hydrostatic pressure + anti-sym part of Ericksen
-    σ_anti      = TF(0.5)*(Px*hy-hx*Py) + 2*(Q1*H2-H1*Q2);
+    # Antisymmetric stress ½(p_α h_β - p_β h_α) + (Q_αγ H_γβ - H_αγ Q_γβ), with the tensor field
+    # Hαβ = H1/2, H2/2: its xy component is ½(Px hy - Py hx) + (Q1 H2 - Q2 H1). The bulk terms of
+    # the two parts cancel (the free energy is invariant under a joint rotation of P and Q).
+    σ_anti      = TF(0.5)*(Px*hy-hx*Py) + (Q1*H2-H1*Q2);
+    # Flow alignment: 2λ Hαβ (reciprocal to -2λ ṽαβ in the Q dynamics) = λ H1 (xx), -λ H1 (yy), λ H2 (xy).
     # xx component of the non-viscous stress
     σ_nv[i,j,1] = f_ρμ + (- ρ^2*kp*(∂xPx^2+∂xPy^2)   + ν1*Px*hx + ν2*(Px*hx+Py*hy) 
-                            - ρ^2*kQ*2*(∂xQ1^2+∂xQ2^2) + 2*λ*H1 
+                            - ρ^2*kQ*2*(∂xQ1^2+∂xQ2^2) + λ*H1 
                             - ζρ*ρ^3 - ρ*(ζp*(Px*Px-TF(0.5)*P2) + TF(0.5)*ζp2*P2 + ζQ*Q1) );
     # yy component of the non-viscous stress
     σ_nv[i,j,4] = f_ρμ + (- ρ^2*kp*(∂yPx^2+∂yPy^2) + ν1*Py*hy + ν2*(Px*hx+Py*hy)
-                            - ρ^2*kQ*2*(∂yQ1^2+∂yQ2^2) - 2*λ*H1
+                            - ρ^2*kQ*2*(∂yQ1^2+∂yQ2^2) - λ*H1
                             - ζρ*ρ^3 - ρ*(ζp*(Py*Py-TF(0.5)*P2) + TF(0.5)*ζp2*P2 - ζQ*Q1) );
     # Symmetric xy component of the non-viscous stress
     σ_symm      = (- ρ^2*(kp*(∂xPx*∂yPx+∂xPy*∂yPy) + 2*kQ*(∂xQ1*∂yQ1+∂xQ2*∂yQ2)) 
-                            + TF(0.5)*ν1*(Px*hy+Py*hx) + 2*λ*H2 - ρ*(ζp*Px*Py + ζQ*Q2));
+                            + TF(0.5)*ν1*(Px*hy+Py*hx) + λ*H2 - ρ*(ζp*Px*Py + ζQ*Q2));
     σ_nv[i,j,2] = σ_symm + σ_anti;
     σ_nv[i,j,3] = σ_symm - σ_anti;
 
@@ -234,12 +246,14 @@ end
     H1, H2                  = load_field(H, i, j, Val(2))
 
     # Dynamics of the polar field
-    Px_next = Px + Δt*(-Vx*∂xPx - Vy*∂yPx - ωxy*Py - ν1*(Px*Vxx+Py*Vxy) - ν2*Px*(Vxx+Vyy) + Γ*hx + εp*ρ*Px)
-    Py_next = Py + Δt*(-Vx*∂xPy - Vy*∂yPy - ωyx*Px - ν1*(Px*Vxy+Py*Vyy) - ν2*Py*(Vxx+Vyy) + Γ*hy + εp*ρ*Py)
+    # Relaxation h/Γp: multiplied by inv_gammap = 1/Γp (InputParams.jl).
+    Px_next = Px + Δt*(-Vx*∂xPx - Vy*∂yPx - ωxy*Py - ν1*(Px*Vxx+Py*Vxy) - ν2*Px*(Vxx+Vyy) + inv_gammap*hx + εp*ρ*Px)
+    Py_next = Py + Δt*(-Vx*∂xPy - Vy*∂yPy - ωyx*Px - ν1*(Px*Vxy+Py*Vyy) - ν2*Py*(Vxx+Vyy) + inv_gammap*hy + εp*ρ*Py)
     save_field!(P, i, j, Px_next, Py_next)
-    # Dynamics of the nematic field
-    Q1_next = Q1 + Δt*(-Vx*∂xQ1 - Vy*∂yQ1 - 2*ωxy*Q2 + Γ*H1 - λ*(Vxx-Vyy) + εQ*ρ*Q1)
-    Q2_next = Q2 + Δt*(-Vx*∂xQ2 - Vy*∂yQ2 - 2*ωyx*Q1 + Γ*H2 - 2*λ*Vxy     + εQ*ρ*Q2)
+    # Dynamics of the nematic field. Relaxation Hαβ/ΓQ = ½ H1/ΓQ, ½ H2/ΓQ (H1 = 2 Hxx, H2 = 2 Hxy);
+    # TF(0.5)*inv_gammaQ is a product of constants, folded at compile time.
+    Q1_next = Q1 + Δt*(-Vx*∂xQ1 - Vy*∂yQ1 - 2*ωxy*Q2 + TF(0.5)*inv_gammaQ*H1 - λ*(Vxx-Vyy) + εQ*ρ*Q1)
+    Q2_next = Q2 + Δt*(-Vx*∂xQ2 - Vy*∂yQ2 - 2*ωyx*Q1 + TF(0.5)*inv_gammaQ*H2 - 2*λ*Vxy     + εQ*ρ*Q2)
     save_field!(Q, i, j, Q1_next, Q2_next)
 
     return nothing
